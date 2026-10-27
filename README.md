@@ -1,6 +1,6 @@
-# BTC AI Trading Indicator
+# SOL AI Trading Indicator
 
-Model-driven live indicator for BTCUSDT (Option B: Python server + Lightweight Charts web app).
+Model-driven live indicator for SOLUSDT (Option B: Python server + Lightweight Charts web app).
 
 ## Setup
 ```bash
@@ -11,7 +11,7 @@ pip install -r requirements.txt
 
 ## Reproduce (run from the repo root)
 ```bash
-python -m src.data.download      # 1. downloads data/BTCUSDT_15m.csv
+python -m src.data.download      # 1. downloads data/SOLUSDT_15m.csv
 python -m src.train.train        # 2. trains, validates, saves models/
 ```
 Settings (asset, timeframe, horizon, threshold, costs) live in `src/config.py`.

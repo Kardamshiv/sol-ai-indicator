@@ -44,11 +44,11 @@ FEATURES = list(make_features(pd.DataFrame({
     "time": pd.to_datetime(["2024-01-01"], utc=True)})).columns)
 
 
-def make_labels(df: pd.DataFrame):
+def make_labels(df: pd.DataFrame, horizon=HORIZON, thresh=THRESH):
     """Return (forward return, class). class: 0=Down, 1=Neutral, 2=Up. Training only."""
-    fwd = df["close"].shift(-HORIZON) / df["close"] - 1
+    fwd = df["close"].shift(-horizon) / df["close"] - 1
     y = pd.Series(1.0, index=df.index)
-    y[fwd > THRESH] = 2
-    y[fwd < -THRESH] = 0
+    y[fwd > thresh] = 2
+    y[fwd < -thresh] = 0
     y[fwd.isna()] = np.nan
     return fwd, y
