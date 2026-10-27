@@ -1,0 +1,32 @@
+{
+  "symbol": "BTCUSDT",
+  "interval": "15m",
+  "horizon": 4,
+  "thresh": 0.001,
+  "cutoff": 0.5800000000000002,
+  "features": [
+    "ret_1",
+    "ret_4",
+    "ret_16",
+    "ret_96",
+    "vol_16",
+    "vol_96",
+    "atr_14",
+    "rsi_14",
+    "macd_hist",
+    "bb_width",
+    "bb_pos",
+    "vol_z",
+    "taker_ratio",
+    "trades_z",
+    "dist_vwap",
+    "hour_sin",
+    "hour_cos",
+    "dow"
+  ],
+  "classes": {
+    "0": "Down",
+    "1": "Neutral",
+    "2": "Up"
+  }
+}
