@@ -23,3 +23,9 @@ Settings (asset, timeframe, horizon, threshold, costs) live in `src/config.py`.
 - [ ] FastAPI live server + signal log (SQLite)
 - [ ] Lightweight Charts frontend
 - [ ] Deployment, report, user guide
+
+## Run the live app (after training)
+```bash
+uvicorn src.server.app:app --port 8000
+```
+Open http://localhost:8000

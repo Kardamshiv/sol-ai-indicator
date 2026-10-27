@@ -1,9 +1,9 @@
 {
-  "symbol": "BTCUSDT",
+  "symbol": "SOLUSDT",
   "interval": "15m",
   "horizon": 4,
-  "thresh": 0.001,
-  "cutoff": 0.5800000000000002,
+  "thresh": 0.002,
+  "cutoff": 0.5600000000000002,
   "features": [
     "ret_1",
     "ret_4",

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTC AI indicator</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root{--bg:#101826;--panel:#17223a;--line:#27365a;--text:#e6ebf5;--mute:#8c9ab8;--up:#35d0a5;--down:#ff6b7a;--flat:#8c9ab8}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;display:grid;grid-template-columns:1fr 300px;grid-template-rows:auto 1fr auto;height:100vh}
+  header{grid-column:1/3;padding:12px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline}
+  h1{font-size:17px;margin:0;font-weight:600}
+  #price{font:500 18px "IBM Plex Mono",monospace}
+  #chart{min-height:0}
+  aside{background:var(--panel);border-left:1px solid var(--line);padding:20px;overflow:auto}
+  #sig{font-size:44px;font-weight:600;line-height:1.1;margin:4px 0}
+  #sig.up{color:var(--up)} #sig.down{color:var(--down)} #sig.none{color:var(--flat);font-size:30px}
+  .bar{height:8px;background:var(--line);border-radius:4px;margin:8px 0 4px;overflow:hidden}
+  #fill{height:100%;width:0;background:var(--flat);transition:width .3s}
+  .mute{color:var(--mute);font-size:13px}
+  dl{margin:18px 0 0;display:grid;grid-template-columns:1fr auto;gap:6px 10px}
+  dt{color:var(--mute)} dd{margin:0;font-family:"IBM Plex Mono",monospace;text-align:right}
+  footer{grid-column:1/3;padding:8px 20px;border-top:1px solid var(--line);color:var(--mute);font-size:12px}
+  @media(max-width:760px){body{grid-template-columns:1fr;grid-template-rows:auto 55vh auto auto;height:auto}header,footer{grid-column:1}aside{border-left:0;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header><h1 id="title">BTC AI indicator</h1><span id="price">-</span></header>
+<div id="chart"></div>
+<aside>
+  <div class="mute">Latest closed candle</div>
+  <div id="sig" class="none">Waiting</div>
+  <div class="bar"><div id="fill"></div></div>
+  <div class="mute" id="conf">Confidence -</div>
+  <dl>
+    <dt>Next candle closes in</dt><dd id="cd">-</dd>
+    <dt>Signals scored</dt><dd id="n">0</dd>
+    <dt>Hit rate</dt><dd id="hit">-</dd>
+    <dt>Always-up hit rate</dt><dd id="base">-</dd>
+    <dt>Net per trade (after costs)</dt><dd id="net">-</dd>
+  </dl>
+  <p class="mute" style="margin-top:22px">Arrows show a confident prediction made when the candle closed. They never change afterwards. No arrow means no clear signal.</p>
+</aside>
+<footer>Paper trading only. Not financial advice.</footer>
+<script>
+const $ = id => document.getElementById(id);
+const pct = x => (x*100).toFixed(2) + "%";
+const chart = LightweightCharts.createChart($("chart"), {
+  layout:{background:{color:"#101826"},textColor:"#8c9ab8"},
+  grid:{vertLines:{color:"#1d2a46"},horzLines:{color:"#1d2a46"}},
+  timeScale:{timeVisible:true,borderColor:"#27365a"}, rightPriceScale:{borderColor:"#27365a"},
+  autoSize:true});
+const series = chart.addCandlestickSeries({upColor:"#35d0a5",downColor:"#ff6b7a",borderVisible:false,wickUpColor:"#35d0a5",wickDownColor:"#ff6b7a"});
+let meta, lastOpen = 0;
+
+async function init(){
+  meta = await (await fetch("/api/meta")).json();
+  $("title").textContent = `${meta.symbol} AI indicator - ${meta.interval}, ${meta.horizon}-candle horizon`;
+  while(true){                                   // server may still be warming up: retry until candles arrive
+    const d = await (await fetch("/api/candles")).json();
+    if(d.length){ series.setData(d); break; }
+    $("sig").className="none"; $("sig").textContent="Loading candles...";
+    await new Promise(r=>setTimeout(r,3000));
+  }
+  refresh(); setInterval(refresh, 5000); setInterval(tick, 1000);
+  const ws = new WebSocket(`wss://data-stream.binance.vision/ws/${meta.symbol.toLowerCase()}@kline_${meta.interval}`);
+  ws.onmessage = e => { const k = JSON.parse(e.data).k;
+    series.update({time:Math.floor(k.t/1000),open:+k.o,high:+k.h,low:+k.l,close:+k.c});
+    $("price").textContent = (+k.c).toLocaleString(undefined,{minimumFractionDigits:2}); };
+}
+
+async function refresh(){
+  const sigs = await (await fetch("/api/signals")).json();
+  series.setMarkers(sigs.filter(s=>s.direction!==0).map(s=>({
+    time:s.open_time/1000, position:s.direction>0?"belowBar":"aboveBar",
+    color:s.direction>0?"#35d0a5":"#ff6b7a", shape:s.direction>0?"arrowUp":"arrowDown",
+    text:`${s.direction>0?"Up":"Down"} ${Math.round(s.confidence*100)}%`})));
+  const l = sigs[sigs.length-1];
+  if(l){ const el=$("sig"), c=Math.round(l.confidence*100);
+    el.className = l.direction>0?"up":l.direction<0?"down":"none";
+    el.textContent = l.direction>0?`Up ${c}%`:l.direction<0?`Down ${c}%`:"No clear signal";
+    $("fill").style.width = c+"%"; $("fill").style.background = l.direction>0?"var(--up)":l.direction<0?"var(--down)":"var(--flat)";
+    $("conf").textContent = `Model confidence ${c}% (needs ${Math.round(meta.cutoff*100)}% to signal)`; }
+  const s = await (await fetch("/api/stats")).json();
+  $("n").textContent = s.n;
+  if(s.n){ $("hit").textContent=pct(s.hit_rate); $("base").textContent=pct(s.always_up_hit); $("net").textContent=pct(s.net_per_trade); }
+}
+
+function tick(){
+  if(!meta) return;
+  const left = meta.interval_sec - (Math.floor(Date.now()/1000) % meta.interval_sec);
+  $("cd").textContent = `${Math.floor(left/60)}:${String(left%60).padStart(2,"0")}`;
+}
+init();
+</script>
+</body>
+</html>
