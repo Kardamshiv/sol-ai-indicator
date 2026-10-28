@@ -153,4 +153,12 @@ def stats():
                 net_per_trade=sum(net) / n, total_net=sum(net))
 
 
+@app.get("/api/health")
+def health():
+    """Used by hosting checks: if last_close_age_sec grows past ~2 candles, the stream has stalled."""
+    last = candles[-1]["close_time"] / 1000 if candles else None
+    return dict(ok=bool(candles), candles=len(candles),
+                last_close_age_sec=None if last is None else round(time.time() - last))
+
+
 app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="web")
