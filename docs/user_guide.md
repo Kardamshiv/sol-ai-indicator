@@ -9,7 +9,8 @@ volume and buying-pressure data and predicts whether the price will be higher or
 |---|---|
 | Green arrow up under a candle, "Up 68%" | The model expects a rise over the next 4 candles, with 68% confidence |
 | Red arrow down above a candle, "Down 64%" | The model expects a fall over the next 4 candles |
-| No arrow / "No clear signal" | Confidence is below the cutoff (see `models/config.json`). **Most candles look like this on purpose.** |
+| Bright bar in the strip under the chart | Confidence on that candle crossed the threshold: a signal |
+| Faint bar in the strip / "No clear signal" | Confidence is below the cutoff (see `models/config.json`). **Most candles look like this on purpose.** |
 
 - Arrows are made once, when the candle closes, and **never move or disappear** (stored in a log).
 - The side panel shows the latest signal, a countdown to the next candle close, and a live scorecard

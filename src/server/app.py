@@ -34,7 +34,11 @@ def init_db():
         c.execute("""CREATE TABLE IF NOT EXISTS signals(
             open_time INTEGER PRIMARY KEY, direction INTEGER, confidence REAL,
             entry_price REAL, horizon INTEGER, created_at REAL,
-            exit_price REAL, ret REAL, hit INTEGER)""")
+            exit_price REAL, ret REAL, hit INTEGER, lean INTEGER)""")
+        try:
+            c.execute("ALTER TABLE signals ADD COLUMN lean INTEGER")   # upgrade a database made by an older version
+        except sqlite3.OperationalError:
+            pass
 
 
 def rest_row(k):
@@ -65,13 +69,15 @@ def predict_and_store():
     df["time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
     p = MODEL.predict_proba(make_features(df)[FEATS].iloc[[-1]])[0]
     k = int(p.argmax()); conf = float(p[k])
-    d = 1 if k == 2 else -1 if k == 0 else 0
+    lean = 1 if k == 2 else -1 if k == 0 else 0     # which side the model leans, even if not confident
+    d = lean
     if conf < CUT:
         d = 0                                   # not confident enough -> no signal
     last = candles[-1]
     with db() as c:                             # INSERT OR IGNORE: stored once, never edited
-        c.execute("INSERT OR IGNORE INTO signals VALUES(?,?,?,?,?,?,NULL,NULL,NULL)",
-                  (last["open_time"], d, conf, last["close"], H, time.time()))
+        c.execute("INSERT OR IGNORE INTO signals(open_time,direction,confidence,entry_price,horizon,created_at,lean) "
+                  "VALUES(?,?,?,?,?,?,?)",
+                  (last["open_time"], d, conf, last["close"], H, time.time(), lean))
 
 
 def process(row, live=True):

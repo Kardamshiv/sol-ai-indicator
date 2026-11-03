@@ -27,7 +27,7 @@
 </style>
 </head>
 <body>
-<header><h1 id="title">SOL AI indicator</h1><span id="price">-</span></header>
+<header><h1 id="title">SOL AI indicator</h1><span><span id="status" class="mute"></span>&nbsp;&nbsp;<span id="price">-</span></span></header>
 <div id="chart"></div>
 <aside>
   <div class="mute">Latest closed candle</div>
@@ -41,7 +41,7 @@
     <dt>Always-up hit rate</dt><dd id="base">-</dd>
     <dt>Net per trade (after costs)</dt><dd id="net">-</dd>
   </dl>
-  <p class="mute" style="margin-top:22px">Arrows show a confident prediction made when the candle closed. They never change afterwards. No arrow means no clear signal.</p>
+  <p class="mute" style="margin-top:22px">Arrows mark confident predictions made when a candle closed; they never change afterwards. The strip under the chart shows the model's confidence on every candle: bright bars cross the threshold (signal), faint bars do not (no clear signal).</p>
 </aside>
 <footer>Paper trading only. Not financial advice.</footer>
 <script>
@@ -53,10 +53,15 @@ const chart = LightweightCharts.createChart($("chart"), {
   timeScale:{timeVisible:true,borderColor:"#27365a"}, rightPriceScale:{borderColor:"#27365a"},
   autoSize:true});
 const series = chart.addCandlestickSeries({upColor:"#35d0a5",downColor:"#ff6b7a",borderVisible:false,wickUpColor:"#35d0a5",wickDownColor:"#ff6b7a"});
+const conf = chart.addHistogramSeries({priceScaleId:"conf", lastValueVisible:false, priceLineVisible:false,
+  priceFormat:{type:"custom", formatter:v=>Math.round(v*100)+"%"}});
+chart.priceScale("conf").applyOptions({scaleMargins:{top:0.82,bottom:0}});
+series.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.22}});
 let meta, lastOpen = 0;
 
 async function init(){
   meta = await (await fetch("/api/meta")).json();
+  conf.createPriceLine({price:meta.cutoff, color:"#8c9ab8", lineStyle:2, lineWidth:1, title:"signal threshold"});
   $("title").textContent = `${meta.symbol} AI indicator - ${meta.interval}, ${meta.horizon}-candle horizon`;
   while(true){                                   // server may still be warming up: retry until candles arrive
     const d = await (await fetch("/api/candles")).json();
@@ -72,11 +77,18 @@ async function init(){
 }
 
 async function refresh(){
+  try{ const h = await (await fetch("/api/health")).json();
+    const ok = h.ok && h.last_close_age_sec < meta.interval_sec*2.5;
+    $("status").textContent = ok ? "\u25cf Live" : "\u25cf Data stalled"; $("status").style.color = ok ? "var(--up)" : "var(--down)";
+  }catch(e){ $("status").textContent = "\u25cf Server offline"; $("status").style.color = "var(--down)"; }
   const sigs = await (await fetch("/api/signals")).json();
   series.setMarkers(sigs.filter(s=>s.direction!==0).map(s=>({
     time:s.open_time/1000, position:s.direction>0?"belowBar":"aboveBar",
     color:s.direction>0?"#35d0a5":"#ff6b7a", shape:s.direction>0?"arrowUp":"arrowDown",
     text:`${s.direction>0?"Up":"Down"} ${Math.round(s.confidence*100)}%`})));
+  conf.setData(sigs.map(x=>({time:x.open_time/1000, value:x.confidence,
+    color: x.direction>0 ? "#35d0a5" : x.direction<0 ? "#ff6b7a"
+         : x.lean>0 ? "rgba(53,208,165,0.25)" : x.lean<0 ? "rgba(255,107,122,0.25)" : "rgba(140,154,184,0.25)"})));
   const l = sigs[sigs.length-1];
   if(l){ const el=$("sig"), c=Math.round(l.confidence*100);
     el.className = l.direction>0?"up":l.direction<0?"down":"none";
