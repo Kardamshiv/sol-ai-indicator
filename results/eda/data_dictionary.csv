@@ -1,0 +1,33 @@
+name,unit_or_type,description
+open_time,"int, ms since epoch (UTC)",Candle open time
+open,USDT,First trade price in the candle
+high,USDT,Highest price in the candle
+low,USDT,Lowest price in the candle
+close,USDT,Last trade price (known only when the candle closes)
+volume,SOL (base asset),Traded volume in the candle
+close_time,"int, ms since epoch (UTC)",Candle close time
+quote_volume,USDT,Traded value in the candle
+trades,count,Number of trades in the candle
+taker_buy_base,SOL,Volume bought by aggressive (taker) buyers
+taker_buy_quote,USDT,Value bought by takers
+time,"datetime, UTC",Candle open time as a timestamp
+ret_1,fraction,Close-to-close return over 1 candle
+ret_4,fraction,Return over 4 candles (1 hour)
+ret_16,fraction,Return over 16 candles (4 hours)
+ret_96,fraction,Return over 96 candles (1 day)
+vol_16,fraction,Std of 1-candle returns over the last 16 candles
+vol_96,fraction,Std of 1-candle returns over the last 96 candles
+atr_14,fraction of close,14-candle average true range divided by close
+rsi_14,0 to 100,"Relative strength index, 14 candles"
+macd_hist,fraction of close,"MACD(12,26) minus its 9-candle signal line, divided by close"
+bb_width,fraction,Bollinger band width (4 x std over 20 candles) relative to the 20-candle mean
+bb_pos,std units,"Close minus 20-candle mean, in units of 2 x std"
+vol_z,z-score,Volume vs its 96-candle mean and std
+taker_ratio,0 to 1,Taker-buy volume divided by total volume (buying pressure)
+trades_z,z-score,Trade count vs its 96-candle mean and std
+dist_vwap,fraction,"Close divided by 96-candle VWAP, minus 1"
+hour_sin,-1 to 1,Sine of UTC time of day (cyclical)
+hour_cos,-1 to 1,Cosine of UTC time of day (cyclical)
+dow,0 to 6,"UTC day of week, 0 = Monday"
+fwd,fraction,"TARGET SOURCE: close HORIZON candles ahead divided by current close, minus 1 (training only)"
+y,0/1/2,"TARGET: 0 = Down, 1 = Neutral (inside +/-THRESH), 2 = Up (training only)"

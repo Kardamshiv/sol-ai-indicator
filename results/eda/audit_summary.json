@@ -1,0 +1,29 @@
+{
+  "rows": 49081,
+  "start": "2024-10-28 11:00:00+00:00",
+  "end": "2026-03-23 17:00:00+00:00",
+  "duplicate_open_time": 0,
+  "gaps": 0,
+  "largest_gap_candles": 1,
+  "out_of_order": 0,
+  "missing_raw": {
+    "open": 0,
+    "high": 0,
+    "low": 0,
+    "close": 0,
+    "volume": 0,
+    "trades": 0,
+    "taker_buy_base": 0
+  },
+  "impossible_values": {
+    "high < low": 0,
+    "close outside [low, high]": 0,
+    "open outside [low, high]": 0,
+    "non-positive price": 0,
+    "negative volume": 0,
+    "zero volume": 0,
+    "zero trades": 0,
+    "taker_buy > volume": 0
+  },
+  "outlier_candles_robust_z_gt_8": 103
+}

@@ -1,0 +1,29 @@
+{
+  "train": {
+    "start_row": 0,
+    "end_row_exclusive": 48985,
+    "rows": 48985,
+    "start_time": "2024-10-29 11:00:00+00:00",
+    "end_time": "2026-03-23 17:00:00+00:00"
+  },
+  "val": {
+    "start_row": 48989,
+    "end_row_exclusive": 59482,
+    "rows": 10493,
+    "start_time": "2026-03-23 18:15:00+00:00",
+    "end_time": "2026-07-11 01:15:00+00:00"
+  },
+  "test": {
+    "start_row": 59486,
+    "end_row_exclusive": 69979,
+    "rows": 10493,
+    "start_time": "2026-07-11 02:30:00+00:00",
+    "end_time": "2026-10-28 09:30:00+00:00"
+  },
+  "symbol": "SOLUSDT",
+  "interval": "15m",
+  "horizon": 4,
+  "thresh": 0.002,
+  "embargo_candles": 4,
+  "seed": 42
+}
