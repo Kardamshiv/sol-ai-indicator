@@ -1,0 +1,19 @@
+group,level,n,hit,se,net_per_trade
+UTC hours,00-05,980,0.536,0.016,-0.00094
+UTC hours,06-11,705,0.499,0.019,-0.0007
+UTC hours,12-17,553,0.548,0.021,-0.00032
+UTC hours,18-23,977,0.596,0.016,-0.00025
+Weekday,weekday,2028,0.548,0.011,-0.00045
+Weekday,weekend,1187,0.548,0.014,-0.00077
+Volatility (vol_96),high,1355,0.548,0.014,-0.00027
+Volatility (vol_96),low,1173,0.517,0.015,-0.00116
+Volatility (vol_96),mid,687,0.601,0.019,-0.00015
+Trend over last day,after a fall,2175,0.556,0.011,-0.00056
+Trend over last day,after a rise,1040,0.532,0.015,-0.0006
+Predicted side,Down,671,0.522,0.019,-0.00061
+Predicted side,Up,2544,0.555,0.01,-0.00056
+Period (fold),2,913,0.539,0.016,-0.00034
+Period (fold),3,710,0.572,0.019,-0.0002
+Period (fold),4,572,0.568,0.021,-0.00034
+Period (fold),5,743,0.518,0.018,-0.00147
+Period (fold),6,277,0.556,0.03,-0.00034

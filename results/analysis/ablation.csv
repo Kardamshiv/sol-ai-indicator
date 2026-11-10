@@ -1,0 +1,7 @@
+,auc_mean,auc_std,delta_vs_all
+all features,0.5227,0.0035,0.0
+without time,0.5158,0.0057,-0.0069
+without flow,0.5234,0.0026,0.0007
+without classic indicators,0.5167,0.0107,-0.006
+without volatility,0.5264,0.008,0.0037
+without returns,0.5167,0.0097,-0.006
