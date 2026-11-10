@@ -1,0 +1,11 @@
+{
+  "python": "3.15.2 (tags/v3.15.2:5e58eaa, Oct 25 2026, 17:27:03) [MSC v.1951 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26100-SP0",
+  "processor": "Intel64 Family 6 Model 154 Stepping 4, GenuineIntel",
+  "cpu_count": 8,
+  "pandas": "3.1.0",
+  "numpy": "2.5.4",
+  "sklearn": "1.9.1",
+  "lightgbm": "4.7.0",
+  "seed": 42
+}

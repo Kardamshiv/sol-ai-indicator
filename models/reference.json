@@ -1,0 +1,13 @@
+{
+  "source": "rolling-origin validation folds 2-6 (training + validation data only)",
+  "period": "2025-04-24 to 2026-07-11",
+  "trades": 3215,
+  "coverage": 0.07567376721195716,
+  "hit_rate": 0.5480559875583204,
+  "hit_ci_low": 0.5258186503564215,
+  "hit_ci_high": 0.5714285714285714,
+  "always_up_hit": 0.5013063434153231,
+  "net_per_trade": -0.0005705550647840841,
+  "net_ci_low": -0.0009288845246186791,
+  "net_ci_high": -0.000202156379558431
+}

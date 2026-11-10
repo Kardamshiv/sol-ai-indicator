@@ -1,0 +1,10 @@
+{
+  "method": "platt",
+  "coef": 0.2531896424208141,
+  "intercept": 0.020170498991868742,
+  "cutoff_calibrated": 0.5346105674862317,
+  "coverage_target": 0.06,
+  "rows_fitted": 29566,
+  "fitted_on": "out-of-fold predictions, training + validation rows only",
+  "created": "2026-11-10"
+}

@@ -9,8 +9,9 @@ Set the default with MODEL_NAME in src/config.py (default: lgbm_dir).
 import numpy as np
 import lightgbm as lgb
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import QuantileTransformer, StandardScaler
 import src.config as C
 
 LGB = dict(n_estimators=300, learning_rate=0.03, num_leaves=15, min_child_samples=100,
@@ -22,13 +23,26 @@ def _logreg():
 
 
 class DirectionModel:
-    def __init__(self, kind="lgbm"):
+    """kind: lgbm | logreg | logreg_q (quantile-normalised inputs) | rf.  params override the defaults (lgbm / rf)."""
+    def __init__(self, kind="lgbm", params=None):
         self.kind = kind
+        self.params = params or {}
+
+    def _estimator(self):
+        if self.kind == "lgbm":
+            return lgb.LGBMClassifier(objective="binary", **{**LGB, **self.params})
+        if self.kind == "rf":
+            kw = dict(n_estimators=300, min_samples_leaf=50, max_features="sqrt", n_jobs=-1, random_state=C.SEED)
+            return RandomForestClassifier(**{**kw, **self.params})
+        if self.kind == "logreg_q":
+            return make_pipeline(QuantileTransformer(n_quantiles=1000, output_distribution="normal", random_state=C.SEED),
+                                 LogisticRegression(max_iter=1000, C=0.1))
+        return _logreg()
 
     def fit(self, X, y):
         y = np.asarray(y).astype(int)
         keep = y != 1
-        self.m_ = lgb.LGBMClassifier(objective="binary", **LGB) if self.kind == "lgbm" else _logreg()
+        self.m_ = self._estimator()
         self.m_.fit(X[keep], (y[keep] == 2).astype(int))
         return self
 

@@ -19,4 +19,4 @@ BASE_URL = "https://data-api.binance.vision"
 # Live market-data websocket (market data only, no API key)
 WS_URL = "wss://data-stream.binance.vision"
 
-MIN_COVERAGE = 0.03
+MIN_COVERAGE = 0.06

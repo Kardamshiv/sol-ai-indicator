@@ -5,7 +5,7 @@
   so it can never change afterwards (no repainting).
 - After HORIZON candles each signal is scored hit/miss.
 """
-import asyncio, json, sqlite3, time
+import asyncio, json, math, sqlite3, time
 from contextlib import asynccontextmanager
 import joblib, pandas as pd, requests, websockets
 from fastapi import FastAPI
@@ -16,6 +16,8 @@ from src.features.build import make_features
 CFG = json.load(open(MODEL_DIR / "config.json"))
 MODEL = joblib.load(MODEL_DIR / "model.joblib")
 FEATS, H, CUT = CFG["features"], CFG["horizon"], CFG["cutoff"]
+CAL = json.load(open(MODEL_DIR / "calibration.json")) if (MODEL_DIR / "calibration.json").exists() else None
+CUT_SHOWN = CAL["cutoff_calibrated"] if CAL else CUT      # confidence needed to signal, in the units shown to the trader
 IV_SEC = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600}[INTERVAL]
 IV_MS = IV_SEC * 1000
 DB = DATA_DIR / "signals.db"
@@ -64,15 +66,24 @@ def resolve(row):
                       (row["close"], ret, int(ret * s["direction"] > 0), s["open_time"]))
 
 
+def calibrated_up_prob(pu):
+    """Platt scaling fitted on out-of-fold predictions (see src/train/fit_calibration.py)."""
+    pu = min(max(pu, 1e-6), 1 - 1e-6)
+    return 1 / (1 + math.exp(-(CAL["coef"] * math.log(pu / (1 - pu)) + CAL["intercept"])))
+
+
 def predict_and_store():
     df = pd.DataFrame(candles)
     df["time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
     p = MODEL.predict_proba(make_features(df)[FEATS].iloc[[-1]])[0]
-    k = int(p.argmax()); conf = float(p[k])
-    lean = 1 if k == 2 else -1 if k == 0 else 0     # which side the model leans, even if not confident
-    d = lean
-    if conf < CUT:
-        d = 0                                   # not confident enough -> no signal
+    if CAL:                                     # calibrated direction probability: "Up 55%" means about 55%
+        q = calibrated_up_prob(float(p[2] / (p[0] + p[2] + 1e-12)))
+        lean = 1 if q > 0.5 else -1
+        conf, cut = max(q, 1 - q), CAL["cutoff_calibrated"]
+    else:
+        k = int(p.argmax()); conf, cut = float(p[k]), CUT
+        lean = 1 if k == 2 else -1 if k == 0 else 0
+    d = lean if conf >= cut else 0              # not confident enough -> no signal
     last = candles[-1]
     with db() as c:                             # INSERT OR IGNORE: stored once, never edited
         c.execute("INSERT OR IGNORE INTO signals(open_time,direction,confidence,entry_price,horizon,created_at,lean) "
@@ -131,7 +142,7 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/api/meta")
 def meta():
-    return dict(symbol=SYMBOL, interval=INTERVAL, interval_sec=IV_SEC, horizon=H, cutoff=CUT, cost=COST)
+    return dict(symbol=SYMBOL, interval=INTERVAL, interval_sec=IV_SEC, horizon=H, cutoff=CUT_SHOWN, calibrated=bool(CAL), cost=COST)
 
 
 @app.get("/api/candles")
@@ -144,6 +155,13 @@ def get_candles():
 def get_signals():
     with db() as c:
         return [dict(r) for r in c.execute("SELECT * FROM signals ORDER BY open_time")]
+
+
+@app.get("/api/reference")
+def reference():
+    """Backtest numbers (test period, NOT live). Created by: python -m src.backtest.backtest"""
+    p = MODEL_DIR / "reference.json"
+    return json.load(open(p)) if p.exists() else {}
 
 
 @app.get("/api/stats")

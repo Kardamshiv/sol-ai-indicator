@@ -22,6 +22,10 @@
   .mute{color:var(--mute);font-size:13px}
   dl{margin:18px 0 0;display:grid;grid-template-columns:1fr auto;gap:6px 10px}
   dt{color:var(--mute)} dd{margin:0;font-family:"IBM Plex Mono",monospace;text-align:right}
+  h2{font-size:13px;color:var(--mute);margin:22px 0 6px;font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:4px 0;text-align:left;border-bottom:1px solid var(--line)} th{color:var(--mute);font-weight:400} td.r,th.r{text-align:right}
+  .hit{color:var(--up)} .miss{color:var(--down)}
   footer{grid-column:1/3;padding:8px 20px;border-top:1px solid var(--line);color:var(--mute);font-size:12px}
   @media(max-width:760px){body{grid-template-columns:1fr;grid-template-rows:auto 55vh auto auto;height:auto}header,footer{grid-column:1}aside{border-left:0;border-top:1px solid var(--line)}}
 </style>
@@ -40,10 +44,18 @@
     <dt>Hit rate</dt><dd id="hit">-</dd>
     <dt>Always-up hit rate</dt><dd id="base">-</dd>
     <dt>Net per trade (after costs)</dt><dd id="net">-</dd>
+    <dt>Candles analysed</dt><dd id="an">0</dd>
+    <dt>Signals fired</dt><dd id="fired">0</dd>
   </dl>
-  <p class="mute" style="margin-top:22px">Arrows mark confident predictions made when a candle closed; they never change afterwards. The strip under the chart shows the model's confidence on every candle: bright bars cross the threshold (signal), faint bars do not (no clear signal).</p>
+  <h2 id="refh">Validation reference (past data, not live)</h2>
+  <dl id="ref" style="margin-top:0"></dl>
+  <h2>Open signal</h2>
+  <div id="open" class="mute">No open signal.</div>
+  <h2>Recent signals</h2>
+  <table id="recent"><thead><tr><th>Candle (UTC)</th><th>Call</th><th class="r">Result</th></tr></thead><tbody></tbody></table>
+  <p class="mute" style="margin-top:18px">Arrows mark confident predictions made when a candle closed; they never change afterwards. The strip under the chart shows confidence on every candle: bright bars cross the threshold (signal), faint bars do not (no clear signal).</p>
 </aside>
-<footer>Paper trading only. Not financial advice.</footer>
+<footer>Paper trading only. Not financial advice. Chart times are UTC (India time = UTC+5:30).</footer>
 <script>
 const $ = id => document.getElementById(id);
 const pct = x => (x*100).toFixed(2) + "%";
@@ -54,14 +66,19 @@ const chart = LightweightCharts.createChart($("chart"), {
   autoSize:true});
 const series = chart.addCandlestickSeries({upColor:"#35d0a5",downColor:"#ff6b7a",borderVisible:false,wickUpColor:"#35d0a5",wickDownColor:"#ff6b7a"});
 const conf = chart.addHistogramSeries({priceScaleId:"conf", lastValueVisible:false, priceLineVisible:false,
-  priceFormat:{type:"custom", formatter:v=>Math.round(v*100)+"%"}});
+  priceFormat:{type:"custom", formatter:v=>Math.round((v+0.5)*100)+"%"}});
 chart.priceScale("conf").applyOptions({scaleMargins:{top:0.82,bottom:0}});
 series.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.22}});
 let meta, lastOpen = 0;
 
 async function init(){
   meta = await (await fetch("/api/meta")).json();
-  conf.createPriceLine({price:meta.cutoff, color:"#8c9ab8", lineStyle:2, lineWidth:1, title:"signal threshold"});
+  conf.createPriceLine({price:meta.cutoff-0.5, color:"#8c9ab8", lineStyle:2, lineWidth:1, title:"signal threshold"});
+  fetch("/api/reference").then(r=>r.json()).then(r=>{
+    if(r.trades){ $("refh").textContent = `Validation reference: ${r.period} (not live)`;
+      $("ref").innerHTML = `<dt>Signals</dt><dd>${r.trades}</dd><dt>Hit rate</dt><dd>${pct(r.hit_rate)}</dd><dt>95% range</dt><dd>${pct(r.hit_ci_low)} to ${pct(r.hit_ci_high)}</dd><dt>Always-up hit rate</dt><dd>${pct(r.always_up_hit)}</dd><dt>Net per trade (after costs)</dt><dd>${pct(r.net_per_trade)}</dd>`; }
+    else { $("ref").innerHTML = "<dt>Reference not generated yet</dt><dd></dd>"; }
+  }).catch(()=>{});
   $("title").textContent = `${meta.symbol} AI indicator - ${meta.interval}, ${meta.horizon}-candle horizon`;
   while(true){                                   // server may still be warming up: retry until candles arrive
     const d = await (await fetch("/api/candles")).json();
@@ -86,7 +103,7 @@ async function refresh(){
     time:s.open_time/1000, position:s.direction>0?"belowBar":"aboveBar",
     color:s.direction>0?"#35d0a5":"#ff6b7a", shape:s.direction>0?"arrowUp":"arrowDown",
     text:`${s.direction>0?"Up":"Down"} ${Math.round(s.confidence*100)}%`})));
-  conf.setData(sigs.map(x=>({time:x.open_time/1000, value:x.confidence,
+  conf.setData(sigs.map(x=>({time:x.open_time/1000, value:x.confidence-0.5,
     color: x.direction>0 ? "#35d0a5" : x.direction<0 ? "#ff6b7a"
          : x.lean>0 ? "rgba(53,208,165,0.25)" : x.lean<0 ? "rgba(255,107,122,0.25)" : "rgba(140,154,184,0.25)"})));
   const l = sigs[sigs.length-1];
@@ -94,10 +111,18 @@ async function refresh(){
     el.className = l.direction>0?"up":l.direction<0?"down":"none";
     el.textContent = l.direction>0?`Up ${c}%`:l.direction<0?`Down ${c}%`:"No clear signal";
     $("fill").style.width = c+"%"; $("fill").style.background = l.direction>0?"var(--up)":l.direction<0?"var(--down)":"var(--flat)";
-    $("conf").textContent = `Model confidence ${c}% (needs ${Math.round(meta.cutoff*100)}% to signal)`; }
+    const cut = Math.round(meta.cutoff*100), side = l.lean>0 ? "Up" : l.lean<0 ? "Down" : "-";
+    $("conf").textContent = l.direction!==0 ? `Confidence ${c}% (threshold ${cut}%)` : `Leaning ${side} at ${c}%, needs ${cut}% to signal`; }
+  const fmt = t => new Date(t*1000).toISOString().slice(5,16).replace("T"," ");
+  const fired = sigs.filter(x=>x.direction!==0), pend = fired.filter(x=>x.exit_price===null);
+  $("an").textContent = sigs.length; $("fired").textContent = fired.length;
+  const o = pend[pend.length-1];
+  $("open").innerHTML = o ? `<b style="color:${o.direction>0?"var(--up)":"var(--down)"}">${o.direction>0?"Up":"Down"} ${Math.round(o.confidence*100)}%</b> from ${o.entry_price.toFixed(2)}; result at ${fmt(o.open_time+(meta.horizon+1)*meta.interval_sec)} UTC` : "No open signal.";
+  $("recent").querySelector("tbody").innerHTML = fired.slice(-8).reverse().map(x=>`<tr><td>${fmt(x.open_time)}</td><td>${x.direction>0?"Up":"Down"} ${Math.round(x.confidence*100)}%</td><td class="r ${x.hit===null?"":x.hit?"hit":"miss"}">${x.hit===null?"pending":(x.hit?"hit ":"miss ")+(x.ret*x.direction*100).toFixed(2)+"%"}</td></tr>`).join("") || '<tr><td colspan="3" class="mute">No signals yet</td></tr>';
   const s = await (await fetch("/api/stats")).json();
-  $("n").textContent = s.n;
+  $("n").textContent = s.n + (pend.length ? ` (+${pend.length} pending)` : "");
   if(s.n){ $("hit").textContent=pct(s.hit_rate); $("base").textContent=pct(s.always_up_hit); $("net").textContent=pct(s.net_per_trade); }
+  else { ["hit","base","net"].forEach(k=>$(k).textContent="none yet"); }
 }
 
 function tick(){

@@ -15,7 +15,7 @@ volume and buying-pressure data and predicts whether the price will be higher or
 - Arrows are made once, when the candle closes, and **never move or disappear** (stored in a log).
 - The side panel shows the latest signal, a countdown to the next candle close, and a live scorecard
   (signals scored, hit rate, always-up baseline, net profit per trade after costs).
-- Confidence is the model's own probability. Higher is not a guarantee: check the calibration plot in `reports/`.
+- Confidence is a **calibrated** probability: 55% means the model was right about 55% of the time on past data. Hourly crypto direction is hard to predict, so typical values are only 50% to 58%. A 52% signal is a small lean, not a strong call.
 
 ## How to use it
 1. Treat an arrow as one input among several, not as an order to trade.
