@@ -593,18 +593,33 @@ async function runSimulation() {
   const cut = $("cutoff-slider").value;
   try {
     const res = await (await fetch(`/api/backtest/simulate?cutoff=${cut}`)).json();
-    $("sim-trades").textContent = res.total_trades + ` (${res.coverage_pct}% candles)`;
-    $("sim-win").textContent = res.win_rate.toFixed(1) + "%";
-    $("sim-base").textContent = res.always_up_win_rate.toFixed(1) + "%";
-    $("sim-net").textContent = (res.net_per_trade_pct >= 0 ? "+" : "") + res.net_per_trade_pct.toFixed(3) + "%";
-    $("sim-tot").textContent = (res.total_return_pct >= 0 ? "+" : "") + res.total_return_pct.toFixed(2) + "%";
-    $("sim-tot").style.color = res.total_return_pct >= 0 ? "var(--up)" : "var(--down)";
-    $("sim-dd").textContent = res.max_drawdown_pct.toFixed(2) + "%";
-    $("bh-comparison").textContent = `Buy & Hold: ${res.buy_and_hold_pct >= 0 ? '+' : ''}${res.buy_and_hold_pct.toFixed(1)}%`;
-    $("sim-final-eq").textContent = `Final: ${res.curve[res.curve.length - 1].toFixed(3)}x`;
-
-    // Draw SVG sparkline
-    drawSparkline(res.curve);
+    if (res.error) {
+      $("sim-trades").textContent = "N/A";
+      $("sim-win").textContent = "N/A";
+      $("sim-base").textContent = "N/A";
+      $("sim-net").textContent = "N/A";
+      $("sim-tot").textContent = "N/A";
+      $("sim-dd").textContent = "N/A";
+      console.warn("Simulator notice:", res.error);
+      return;
+    }
+    const trades = res.total_trades ?? 0;
+    const cov = (res.coverage_pct ?? 0).toFixed(1);
+    $("sim-trades").textContent = `${trades} (${cov}% candles)`;
+    $("sim-win").textContent = (res.win_rate ?? 0).toFixed(1) + "%";
+    $("sim-base").textContent = (res.always_up_win_rate ?? 0).toFixed(1) + "%";
+    const net = res.net_per_trade_pct ?? 0;
+    $("sim-net").textContent = (net >= 0 ? "+" : "") + net.toFixed(3) + "%";
+    const tot = res.total_return_pct ?? 0;
+    $("sim-tot").textContent = (tot >= 0 ? "+" : "") + tot.toFixed(2) + "%";
+    $("sim-tot").style.color = tot >= 0 ? "var(--up)" : "var(--down)";
+    $("sim-dd").textContent = (res.max_drawdown_pct ?? 0).toFixed(2) + "%";
+    const bh = res.buy_and_hold_pct ?? 0;
+    $("bh-comparison").textContent = `Buy & Hold: ${bh >= 0 ? '+' : ''}${bh.toFixed(1)}%`;
+    if (res.curve && res.curve.length) {
+      $("sim-final-eq").textContent = `Final: ${res.curve[res.curve.length - 1].toFixed(3)}x`;
+      drawSparkline(res.curve);
+    }
   } catch (e) {
     console.error("Simulation error", e);
   }

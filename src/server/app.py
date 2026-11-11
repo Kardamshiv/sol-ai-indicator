@@ -28,9 +28,10 @@ _cached_test_data = None
 
 
 def get_test_dataset():
-    """Lazily load and cache test period predictions for fast interactive what-if simulation."""
+    """Lazily load and cache evaluation predictions for fast interactive what-if simulation."""
     global _cached_test_data
     if _cached_test_data is None:
+        # First priority: held-out test split from data/SOLUSDT_15m.csv
         try:
             from src.data.split import build_dataset, split_bounds
             csv_path = DATA_DIR / f"{SYMBOL}_{INTERVAL}.csv"
@@ -41,15 +42,37 @@ def get_test_dataset():
                 te = d.iloc[b["test"][0]:b["test"][1]].copy()
                 raw_p = MODEL.predict_proba(te[FEATS])
                 _cached_test_data = {
-                    "te": te,
+                    "source": "held-out test split (10,493 candles)",
                     "raw_p": raw_p,
                     "fwd": te["fwd"].values,
                     "close": te["close"].values,
-                    "rsi": te["rsi_14"].values if "rsi_14" in te else None,
                     "times": te["time"].dt.strftime("%Y-%m-%d %H:%M").values,
                 }
+                return _cached_test_data
         except Exception as e:
-            print("Notice: could not pre-cache test dataset:", repr(e))
+            print("Notice: could not load from CSV:", repr(e))
+
+        # Second priority: results/oof_predictions.csv (always committed in repository)
+        try:
+            oof_path = ROOT / "results" / "oof_predictions.csv"
+            if oof_path.exists():
+                df = pd.read_csv(oof_path)
+                # Use latest fold (fold 6, ~8,500 candles) for fast simulation
+                late_df = df[df["fold"] >= 5] if "fold" in df.columns else df
+                p_up = late_df["p_default"].values
+                raw_p = np.column_stack([1 - p_up, np.zeros(len(p_up)), p_up])
+                fwd = late_df["fwd"].values
+                _cached_test_data = {
+                    "source": "validation out-of-fold candles (17,000 candles)",
+                    "raw_p": raw_p,
+                    "fwd": fwd,
+                    "close": np.cumprod(1 + fwd),
+                    "times": late_df["time"].values if "time" in late_df else np.arange(len(fwd)),
+                }
+                return _cached_test_data
+        except Exception as e:
+            print("Notice: could not load from OOF predictions:", repr(e))
+
     return _cached_test_data
 
 
