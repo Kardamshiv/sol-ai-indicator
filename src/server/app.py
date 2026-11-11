@@ -8,7 +8,9 @@
 import asyncio, json, math, sqlite3, time
 from contextlib import asynccontextmanager
 import joblib, pandas as pd, requests, websockets
-from fastapi import FastAPI
+import io, csv
+from fastapi import FastAPI, Response, Query
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from src.config import *
 from src.features.build import make_features
@@ -22,6 +24,33 @@ IV_SEC = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600}[I
 IV_MS = IV_SEC * 1000
 DB = DATA_DIR / "signals.db"
 candles: list[dict] = []
+_cached_test_data = None
+
+
+def get_test_dataset():
+    """Lazily load and cache test period predictions for fast interactive what-if simulation."""
+    global _cached_test_data
+    if _cached_test_data is None:
+        try:
+            from src.data.split import build_dataset, split_bounds
+            csv_path = DATA_DIR / f"{SYMBOL}_{INTERVAL}.csv"
+            if csv_path.exists():
+                df = pd.read_csv(csv_path, parse_dates=["time"])
+                _, d = build_dataset(df)
+                b = split_bounds(len(d))
+                te = d.iloc[b["test"][0]:b["test"][1]].copy()
+                raw_p = MODEL.predict_proba(te[FEATS])
+                _cached_test_data = {
+                    "te": te,
+                    "raw_p": raw_p,
+                    "fwd": te["fwd"].values,
+                    "close": te["close"].values,
+                    "rsi": te["rsi_14"].values if "rsi_14" in te else None,
+                    "times": te["time"].dt.strftime("%Y-%m-%d %H:%M").values,
+                }
+        except Exception as e:
+            print("Notice: could not pre-cache test dataset:", repr(e))
+    return _cached_test_data
 
 
 def db():
@@ -183,6 +212,209 @@ def health():
     last = candles[-1]["close_time"] / 1000 if candles else None
     return dict(ok=bool(candles), candles=len(candles),
                 last_close_age_sec=None if last is None else round(time.time() - last))
+
+
+@app.get("/api/predict/latest")
+def predict_latest():
+    """Detailed prediction breakdown on the latest closed candle with explainability drivers."""
+    if len(candles) < 120:
+        return dict(status="warming_up", candles=len(candles), needed=120)
+
+    df = pd.DataFrame(candles)
+    df["time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
+    feat_df = make_features(df)
+    last_row = feat_df[FEATS].iloc[[-1]]
+    p = MODEL.predict_proba(last_row)[0]
+
+    raw_up = float(p[2] / (p[0] + p[2] + 1e-12))
+    if CAL:
+        q = calibrated_up_prob(raw_up)
+        lean = 1 if q > 0.5 else -1
+        conf, cut = max(q, 1 - q), CAL["cutoff_calibrated"]
+    else:
+        k = int(p.argmax())
+        conf, cut = float(p[k]), CUT
+        lean = 1 if k == 2 else -1 if k == 0 else 0
+        q = float(p[2])
+
+    d = lean if conf >= cut else 0
+    last_candle = candles[-1]
+
+    # Feature inspection and human-readable drivers
+    r = last_row.iloc[0]
+    drivers = []
+    ret_96_val = float(r.get("ret_96", 0))
+    rsi_val = float(r.get("rsi_14", 50))
+    vol_val = float(r.get("vol_16", 0))
+    taker_val = float(r.get("taker_ratio", 0.5))
+    vwap_val = float(r.get("dist_vwap", 0))
+
+    if ret_96_val > 0.01:
+        drivers.append(dict(name="24h Trend (ret_96)", value=f"{ret_96_val:+.2%}", impact="bullish", note="Positive 24h momentum"))
+    elif ret_96_val < -0.01:
+        drivers.append(dict(name="24h Trend (ret_96)", value=f"{ret_96_val:+.2%}", impact="bearish", note="Negative 24h momentum"))
+
+    if rsi_val > 60:
+        drivers.append(dict(name="RSI (14)", value=f"{rsi_val:.1f}", impact="bullish", note="Strong buying pressure"))
+    elif rsi_val < 40:
+        drivers.append(dict(name="RSI (14)", value=f"{rsi_val:.1f}", impact="bearish", note="Strong selling pressure"))
+    else:
+        drivers.append(dict(name="RSI (14)", value=f"{rsi_val:.1f}", impact="neutral", note="Neutral momentum zone"))
+
+    if taker_val > 0.52:
+        drivers.append(dict(name="Taker Buy Ratio", value=f"{taker_val:.1%}", impact="bullish", note="Aggressive buyer market orders"))
+    elif taker_val < 0.48:
+        drivers.append(dict(name="Taker Buy Ratio", value=f"{taker_val:.1%}", impact="bearish", note="Aggressive seller market orders"))
+
+    if vwap_val > 0.005:
+        drivers.append(dict(name="VWAP Distance", value=f"{vwap_val:+.2%}", impact="bullish", note="Trading above rolling VWAP"))
+    elif vwap_val < -0.005:
+        drivers.append(dict(name="VWAP Distance", value=f"{vwap_val:+.2%}", impact="bearish", note="Trading below rolling VWAP"))
+
+    return dict(
+        status="ok",
+        candle_open_time=last_candle["open_time"],
+        close_price=last_candle["close"],
+        direction=d,
+        direction_label="Up" if d == 1 else "Down" if d == -1 else "No clear signal",
+        lean=lean,
+        lean_label="Up" if lean == 1 else "Down",
+        confidence=conf,
+        confidence_pct=round(conf * 100, 2),
+        cutoff=cut,
+        cutoff_pct=round(cut * 100, 2),
+        is_signal=bool(d != 0),
+        raw_prob_up=round(raw_up, 4),
+        calibrated_prob_up=round(q, 4),
+        drivers=drivers,
+        key_features={
+            "ret_1": round(float(r.get("ret_1", 0)), 4),
+            "ret_4": round(float(r.get("ret_4", 0)), 4),
+            "ret_16": round(float(r.get("ret_16", 0)), 4),
+            "ret_96": round(ret_96_val, 4),
+            "rsi_14": round(rsi_val, 2),
+            "taker_ratio": round(taker_val, 4),
+            "dist_vwap": round(vwap_val, 4),
+            "vol_16": round(vol_val, 5),
+        }
+    )
+
+
+@app.get("/api/features/importance")
+def feature_importance():
+    """Return permutation importance and group categories from model validation."""
+    p = ROOT / "results" / "analysis" / "permutation_importance.csv"
+    if p.exists():
+        df = pd.read_csv(p)
+        return df.to_dict(orient="records")
+    return []
+
+
+@app.get("/api/backtest/simulate")
+def backtest_simulate(cutoff: float = Query(default=0.5346), cost: float = Query(default=0.001)):
+    """Interactive backtest simulation over the test period across user-tuned cutoffs and costs."""
+    data = get_test_dataset()
+    if not data:
+        return dict(error="Test dataset not available on server")
+
+    raw_p = data["raw_p"]
+    fwd = data["fwd"]
+    close = data["close"]
+    n_candles = len(fwd)
+
+    if CAL:
+        pu = raw_p[:, 2] / (raw_p[:, 0] + raw_p[:, 2] + 1e-12)
+        pu = np.clip(pu, 1e-6, 1 - 1e-6)
+        log_odds = np.log(pu / (1 - pu))
+        q = 1 / (1 + np.exp(-(CAL["coef"] * log_odds + CAL["intercept"])))
+        conf = np.maximum(q, 1 - q)
+        pred = np.where(q > 0.5, 1, -1)
+    else:
+        conf = raw_p.max(axis=1)
+        k = raw_p.argmax(axis=1)
+        pred = np.where(k == 2, 1, np.where(k == 0, -1, 0))
+
+    signals_arr = np.where(conf >= cutoff, pred, 0)
+
+    rets = []
+    trades = []
+    eq = [1.0]
+    i = 0
+    while i < n_candles:
+        if signals_arr[i] != 0:
+            direction = signals_arr[i]
+            r = direction * fwd[i] - cost
+            rets.append(r)
+            eq.append(eq[-1] * (1 + r))
+            trades.append(dict(idx=i, direction=int(direction), ret=float(fwd[i]), net=float(r)))
+            i += H
+        else:
+            i += 1
+
+    total_trades = len(rets)
+    if total_trades == 0:
+        return dict(
+            cutoff=cutoff,
+            cost=cost,
+            total_trades=0,
+            coverage_pct=0.0,
+            win_rate=0.0,
+            always_up_win_rate=round(float((fwd > 0).mean()) * 100, 2),
+            net_per_trade_pct=0.0,
+            total_return_pct=0.0,
+            max_drawdown_pct=0.0,
+            buy_and_hold_pct=round(float(close[-1] / close[0] - 1) * 100, 2),
+            curve=[1.0],
+        )
+
+    eq_arr = np.array(eq)
+    peak = np.maximum.accumulate(eq_arr)
+    max_dd = float((eq_arr / peak - 1).min())
+    hits = sum(1 for t in trades if t["direction"] * t["ret"] > 0)
+    win_rate = hits / total_trades
+    always_up = float((fwd > 0).mean())
+
+    step = max(1, len(eq) // 40)
+    curve_sampled = [round(float(eq[idx]), 4) for idx in range(0, len(eq), step)]
+    if curve_sampled[-1] != round(float(eq[-1]), 4):
+        curve_sampled.append(round(float(eq[-1]), 4))
+
+    return dict(
+        cutoff=cutoff,
+        cost=cost,
+        total_trades=total_trades,
+        coverage_pct=round(total_trades * H / n_candles * 100, 2),
+        win_rate=round(win_rate * 100, 2),
+        always_up_win_rate=round(always_up * 100, 2),
+        net_per_trade_pct=round(float(np.mean(rets)) * 100, 3),
+        total_return_pct=round(float(eq[-1] - 1) * 100, 2),
+        max_drawdown_pct=round(max_dd * 100, 2),
+        buy_and_hold_pct=round(float(close[-1] / close[0] - 1) * 100, 2),
+        curve=curve_sampled,
+    )
+
+
+@app.get("/api/signals/export")
+def export_signals():
+    """Export the immutable SQLite signal log as a downloadable CSV."""
+    with db() as c:
+        rows = c.execute("SELECT * FROM signals ORDER BY open_time").fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["open_time_ms", "datetime_utc", "direction", "direction_label", "confidence", "entry_price", "exit_price", "return_pct", "hit", "lean"])
+    for r in rows:
+        d = r["direction"]
+        d_lbl = "Up" if d == 1 else "Down" if d == -1 else "No Signal"
+        dt_str = pd.to_datetime(r["open_time"], unit="ms", utc=True).strftime("%Y-%m-%d %H:%M:%S")
+        ret_val = f"{r['ret'] * 100:.3f}%" if r["ret"] is not None else ""
+        writer.writerow([r["open_time"], dt_str, d, d_lbl, r["confidence"], r["entry_price"], r["exit_price"], ret_val, r["hit"], r["lean"]])
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={SYMBOL}_signals_log.csv"},
+    )
 
 
 app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="web")
