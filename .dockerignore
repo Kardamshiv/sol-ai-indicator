@@ -1,6 +1,6 @@
 .venv
-data
 __pycache__
 .git
 reports
 notebooks
+data/signals.db
