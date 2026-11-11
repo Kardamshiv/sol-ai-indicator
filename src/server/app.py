@@ -7,7 +7,7 @@
 """
 import asyncio, json, math, sqlite3, time
 from contextlib import asynccontextmanager
-import joblib, pandas as pd, requests, websockets
+import joblib, numpy as np, pandas as pd, requests, websockets
 import io, csv
 from fastapi import FastAPI, Response, Query
 from fastapi.responses import PlainTextResponse
@@ -300,12 +300,24 @@ def predict_latest():
     )
 
 
+FEATURE_GROUPS = {
+    "ret_1": "momentum", "ret_4": "momentum", "ret_16": "momentum", "ret_96": "momentum",
+    "vol_16": "volatility", "vol_96": "volatility", "atr_14": "volatility", "bb_width": "volatility",
+    "bb_pos": "oscillator", "rsi_14": "oscillator", "macd_hist": "oscillator", "dist_vwap": "oscillator",
+    "vol_z": "order flow", "trades_z": "order flow", "taker_ratio": "order flow",
+    "hour_sin": "diurnal", "hour_cos": "diurnal", "dow": "diurnal"
+}
+
+
 @app.get("/api/features/importance")
 def feature_importance():
-    """Return permutation importance and group categories from model validation."""
+    """Return permutation importance sorted descending by impact with category tags."""
     p = ROOT / "results" / "analysis" / "permutation_importance.csv"
     if p.exists():
         df = pd.read_csv(p)
+        df["group"] = df["feature"].map(FEATURE_GROUPS).fillna("indicator")
+        df["drop_mean"] = df["mean"]
+        df = df.sort_values(by="mean", ascending=False)
         return df.to_dict(orient="records")
     return []
 

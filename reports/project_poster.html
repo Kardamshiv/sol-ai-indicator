@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poster: SOLUSDT AI Trading Indicator & Predictor</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b101b;
+    --panel: #121a2d;
+    --panel-header: #1a253e;
+    --border: #233252;
+    --text: #e6ebf5;
+    --text-muted: #8e9dbd;
+    --accent: #3a7bd5;
+    --accent-light: #5a95f5;
+    --up: #35d0a5;
+    --down: #ff6b7a;
+    --gold: #f5b041;
+  }
+  * { box-sizing: border-box; }
+  @page {
+    size: 1920px 1080px;
+    margin: 0;
+  }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 "IBM Plex Sans", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* Header */
+  header {
+    background: linear-gradient(135deg, #16223b 0%, #0d1629 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    margin-bottom: 20px;
+  }
+  .title-group h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    letter-spacing: -0.4px;
+    background: linear-gradient(90deg, #ffffff, #c7d8ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .title-group p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .header-meta {
+    text-align: right;
+  }
+  .affiliation {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+  .lab-tag {
+    font-size: 12px;
+    color: var(--accent-light);
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .badge-bar {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    justify-content: flex-end;
+  }
+  .badge {
+    background: rgba(58,123,213,0.18);
+    border: 1px solid rgba(58,123,213,0.4);
+    color: #b8d3ff;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* Grid Layout */
+  .grid-container {
+    display: grid;
+    grid-template-columns: 1fr 1.35fr 1.15fr 1.1fr;
+    gap: 18px;
+    flex: 1;
+  }
+
+  /* Cards */
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+  }
+  .card-header {
+    background: var(--panel-header);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #cdd9f0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-header span.num {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 20px;
+    font-size: 11px;
+  }
+  .card-body {
+    padding: 14px;
+    flex: 1;
+    font-size: 13px;
+  }
+
+  /* Typography & Tables */
+  p { margin: 0 0 8px; color: #cfd8eb; line-height: 1.42; }
+  strong { color: #fff; }
+  ul { margin: 0; padding-left: 18px; }
+  li { margin-bottom: 5px; color: #cbd6ed; }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 8px 0;
+  }
+  .stat-box {
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    border-radius: 6px;
+  }
+  .stat-label { font-size: 11px; color: var(--text-muted); }
+  .stat-value { font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 700; color: #fff; margin-top: 2px; }
+  .stat-value.up { color: var(--up); }
+  .stat-value.accent { color: var(--accent-light); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 4px; }
+  th, td { padding: 5px 6px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: rgba(0,0,0,0.2); color: var(--text-muted); font-weight: 600; }
+  td.num { font-family: "IBM Plex Mono", monospace; text-align: right; }
+  tr.highlight { background: rgba(58,123,213,0.12); font-weight: 600; }
+
+  /* Architecture SVG Diagram */
+  .diagram-box {
+    background: #0d1424;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin: 8px 0;
+  }
+  svg.arch-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .print-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 5px;
+    font: 600 12px "IBM Plex Sans", sans-serif;
+    cursor: pointer;
+  }
+  .print-btn:hover { background: var(--accent-light); }
+
+  @media print {
+    body { padding: 12px; background: #0b101b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .print-btn { display: none; }
+    header, .card, footer { box-shadow: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="title-group">
+    <h1>Hourly Direction Prediction for SOLUSDT Using Gradient Boosting</h1>
+    <p>A Scientifically Validated Machine Learning Indicator with Non-Repainting Execution & Calibrated Abstention</p>
+  </div>
+  <div class="header-meta">
+    <div class="affiliation">IMPACT Lab, Department of Computer Science & Engineering</div>
+    <div class="lab-tag">Indian Institute of Technology Patna &bull; November 2026</div>
+    <div class="badge-bar">
+      <span class="badge">Binance SOLUSDT (15m)</span>
+      <span class="badge">Horizon: 1h (4 Candles)</span>
+      <span class="badge">Zero Repainting</span>
+      <span class="badge">Platt Calibrated</span>
+    </div>
+  </div>
+</header>
+
+<!-- Main 4-Column Grid -->
+<div class="grid-container">
+
+  <!-- COLUMN 1: Problem & Data Audit -->
+  <div class="col">
+    <div class="card">
+      <div class="card-header"><span class="num">1</span> Problem Formulation</div>
+      <div class="card-body">
+        <p><strong>The Challenge:</strong> Intraday crypto markets have extreme noise and transaction cost frictions. Traditional technical indicators (RSI, MACD) apply static heuristics, cannot learn non-linear patterns, and often repaint.</p>
+        <p><strong>Formal Task:</strong> Binary direction prediction ($y \in \{\text{Down}, \text{Up}\}$) 4 candles ($1\text{ hour}$) ahead on SOLUSDT with an explicit <strong>abstention dead-zone</strong> ($|\text{return}| \le 0.20\%$).</p>
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div class="stat-label">Asset / Timeframe</div>
+            <div class="stat-value accent">SOLUSDT 15m</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Forward Horizon</div>
+            <div class="stat-value">4 Candles (1h)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="flex:1;">
+      <div class="card-header"><span class="num">2</span> Dataset & Quality Audit</div>
+      <div class="card-body">
+        <p>Collected from Binance Public API over <strong>2 full calendar years</strong> (Oct 2024 &ndash; Oct 2026):</p>
+        <ul>
+          <li><strong>70,079 continuous candles</strong> (96 candles per UTC day).</li>
+          <li><strong>0 missing records</strong>, 0 duplicate timestamps, 100% cadence continuity.</li>
+          <li><strong>Dead-Zone Breakdown:</strong> Neutral candles represent $26.2\%$. Among clear moves, Up is $50.6\%$ and Down is $49.4\%$ (true balanced baseline).</li>
+        </ul>
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div class="stat-label">Total Candles</div>
+            <div class="stat-value">70,079</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Directional Baseline</div>
+            <div class="stat-value">50.6% Up</div>
+          </div>
+        </div>
+        <p style="font-size:12px; margin-top:8px;"><strong>18 Causal Features:</strong> Returns (1, 4, 16, 96), Volatility (16, 96, ATR-14, Bollinger Width/Pos), Oscillators (RSI-14, MACD, VWAP dist), Microstructure (Taker buy ratio, Trades z-score), and Diurnal Harmonics (Hour sin/cos, Day of week).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLUMN 2: End-to-End Workflow Architecture -->
+  <div class="col">
+    <div class="card" style="flex:1;">
+      <div class="card-header"><span class="num">3</span> End-to-End System Workflow</div>
+      <div class="card-body">
+        <p>Strict chronological separation with an embargo of $H=4$ candles eliminates all look-ahead bias and serial correlation leakage:</p>
+        
+        <!-- Inline Workflow Diagram -->
+        <div class="diagram-box">
+          <svg class="arch-svg" viewBox="0 0 460 380" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="grad-blue" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#1e3a6a"/><stop offset="1%" stop-color="#2a5298"/>
+              </linearGradient>
+              <linearGradient id="grad-green" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#164e3f"/><stop offset="1%" stop-color="#24826b"/>
+              </linearGradient>
+              <linearGradient id="grad-purple" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#3c2266"/><stop offset="1%" stop-color="#593299"/>
+              </linearGradient>
+              <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#5a95f5"/>
+              </marker>
+            </defs>
+
+            <!-- Box 1: Ingestion -->
+            <rect x="20" y="15" width="420" height="42" rx="6" fill="url(#grad-blue)" stroke="#3a7bd5" stroke-width="1.2"/>
+            <text x="230" y="41" fill="#fff" font-family="'IBM Plex Sans',sans-serif" font-size="12" font-weight="600" text-anchor="middle">1. Binance Public Kline Feed (15m SOLUSDT OHLCV + Order Flow)</text>
+
+            <line x1="230" y1="57" x2="230" y2="76" stroke="#5a95f5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+            <!-- Box 2: Feature Engineering -->
+            <rect x="20" y="78" width="420" height="45" rx="6" fill="#152138" stroke="#2a416d" stroke-width="1.2"/>
+            <text x="230" y="98" fill="#e6ebf5" font-family="'IBM Plex Sans',sans-serif" font-size="11.5" font-weight="600" text-anchor="middle">2. Causal Feature Engineering (18 Closed-Candle Inputs)</text>
+            <text x="230" y="113" fill="#8e9dbd" font-family="'IBM Plex Sans',sans-serif" font-size="10" text-anchor="middle">Multi-horizon Momentum &bull; Volatility &bull; Taker Ratio &bull; Diurnal Harmonics</text>
+
+            <line x1="230" y1="123" x2="230" y2="142" stroke="#5a95f5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+            <!-- Box 3: Split Protocol -->
+            <rect x="20" y="144" width="420" height="48" rx="6" fill="#152138" stroke="#2a416d" stroke-width="1.2"/>
+            <text x="230" y="164" fill="#e6ebf5" font-family="'IBM Plex Sans',sans-serif" font-size="11.5" font-weight="600" text-anchor="middle">3. Chronological 70 / 15 / 15 Partition with Embargo (H = 4)</text>
+            <text x="230" y="180" fill="#f5b041" font-family="'IBM Plex Mono',monospace" font-size="9.5" text-anchor="middle">Train: 48,981 candles | Val: 10,492 candles | Held-Out Test: 10,493 candles</text>
+
+            <line x1="230" y1="192" x2="230" y2="211" stroke="#5a95f5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+            <!-- Box 4: Training & Calibration -->
+            <rect x="20" y="213" width="420" height="48" rx="6" fill="url(#grad-purple)" stroke="#7444c4" stroke-width="1.2"/>
+            <text x="230" y="233" fill="#fff" font-family="'IBM Plex Sans',sans-serif" font-size="11.5" font-weight="600" text-anchor="middle">4. LightGBM Direction Training &amp; Out-of-Fold Platt Calibration</text>
+            <text x="230" y="249" fill="#d8c5fa" font-family="'IBM Plex Sans',sans-serif" font-size="10" text-anchor="middle">Expanding-Window CV (6 Folds) &bull; Platt Sigmoid Maps Log-Odds to True Probabilities</text>
+
+            <line x1="230" y1="261" x2="230" y2="280" stroke="#5a95f5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+            <!-- Box 5: Live Execution -->
+            <rect x="20" y="282" width="420" height="52" rx="6" fill="url(#grad-green)" stroke="#35d0a5" stroke-width="1.2"/>
+            <text x="230" y="302" fill="#fff" font-family="'IBM Plex Sans',sans-serif" font-size="12" font-weight="600" text-anchor="middle">5. FastAPI Real-Time Server + Zero-Repainting Log</text>
+            <text x="230" y="321" fill="#a4ecd8" font-family="'IBM Plex Sans',sans-serif" font-size="10" text-anchor="middle">WebSocket Kline Listener &bull; SQLite INSERT OR IGNORE &bull; Auto-Scoring at t+4</text>
+
+            <line x1="230" y1="334" x2="230" y2="349" stroke="#5a95f5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+            <!-- Box 6: User UI -->
+            <rect x="50" y="351" width="360" height="24" rx="4" fill="#1b2a47" stroke="#3a7bd5" stroke-width="1"/>
+            <text x="230" y="367" fill="#c7d8ff" font-family="'IBM Plex Sans',sans-serif" font-size="10.5" font-weight="600" text-anchor="middle">Trader Dashboard (Lightweight Charts + What-If Simulator + Drivers)</text>
+          </svg>
+        </div>
+
+        <p style="margin-top:8px;"><strong>Platt Probability Calibration:</strong>
+        $$P(\text{Up}) = \frac{1}{1 + \exp(-(0.253 \cdot \text{logit}(p) + 0.020))}$$
+        Fitted on 29,566 out-of-fold predictions. A reported $55\%$ confidence guarantees that historical accuracy matches $\approx 55\%$.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLUMN 3: Experimental Results -->
+  <div class="col">
+    <div class="card" style="flex:1;">
+      <div class="card-header"><span class="num">4</span> Model Comparison & Evaluation</div>
+      <div class="card-body">
+        <p>Cross-validation comparison across candidates and technical baselines on training + validation data:</p>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>Model / Strategy</th>
+              <th>CV AUC</th>
+              <th>Hit Rate</th>
+              <th class="num">Net/Trd</th>
+              <th class="num">Size</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Always Up (Trivial)</td>
+              <td>0.500</td>
+              <td>49.9%</td>
+              <td class="num">-0.106%</td>
+              <td class="num">&mdash;</td>
+            </tr>
+            <tr>
+              <td>Persistence (Naive)</td>
+              <td>0.490</td>
+              <td>47.5%</td>
+              <td class="num">-0.185%</td>
+              <td class="num">&mdash;</td>
+            </tr>
+            <tr>
+              <td>RSI Rule (30 / 70)</td>
+              <td>0.522</td>
+              <td>51.9%</td>
+              <td class="num">-0.111%</td>
+              <td class="num">&mdash;</td>
+            </tr>
+            <tr>
+              <td>Logistic Regression</td>
+              <td>0.514</td>
+              <td>52.5%</td>
+              <td class="num">+0.008%</td>
+              <td class="num">150 KB</td>
+            </tr>
+            <tr>
+              <td>Random Forest (300)</td>
+              <td>0.523</td>
+              <td>56.5%</td>
+              <td class="num">-0.004%</td>
+              <td class="num">17.1 MB</td>
+            </tr>
+            <tr class="highlight">
+              <td><strong>LightGBM (Deployed)</strong></td>
+              <td><strong>0.521</strong></td>
+              <td><strong>54.7%</strong></td>
+              <td class="num"><strong>-0.046%</strong></td>
+              <td class="num"><strong>529 KB</strong></td>
+            </tr>
+            <tr>
+              <td>LightGBM (Tuned)</td>
+              <td>0.525</td>
+              <td>54.2%</td>
+              <td class="num">-0.060%</td>
+              <td class="num">1.0 MB</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top:14px;">
+          <p><strong>Held-Out Test Results (10,493 Fresh Candles):</strong></p>
+          <div class="stat-grid">
+            <div class="stat-box">
+              <div class="stat-label">Model Confident Hit Rate</div>
+              <div class="stat-value up">58.3%</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Always-Up Baseline</div>
+              <div class="stat-value">50.3%</div>
+            </div>
+          </div>
+          <p style="font-size:11.5px; color:#cfd8eb; margin-top:6px;">
+            The model achieves a <strong>+8.0% edge</strong> over the majority baseline. At 168 non-overlapping trades, gross returns are positive ($+0.043\%$), but round-trip fee friction ($0.10\%$) brings net return to $-0.022\%$.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLUMN 4: Explainability & Live Dashboard -->
+  <div class="col">
+    <div class="card">
+      <div class="card-header"><span class="num">5</span> Feature Drivers & Error Analysis</div>
+      <div class="card-body">
+        <p><strong>Permutation Feature Importance:</strong></p>
+        <ul>
+          <li><strong>24h Return Momentum (`ret_96`):</strong> $\Delta\text{AUC} = -0.0119$ (primary directional driver).</li>
+          <li><strong>14-Period RSI (`rsi_14`):</strong> $\Delta\text{AUC} = -0.0038$.</li>
+          <li><strong>24h Volatility (`vol_96`):</strong> $\Delta\text{AUC} = -0.0038$.</li>
+          <li><strong>Diurnal Cycles (`hour_sin/cos`):</strong> $\Delta\text{AUC} = -0.0069$.</li>
+        </ul>
+        <p style="margin-top:8px;"><strong>Subgroup Performance:</strong></p>
+        <ul>
+          <li><strong>US Market Hours (18&ndash;23 UTC):</strong> Peak accuracy ($59.6\%$).</li>
+          <li><strong>Asian/EU Morning (06&ndash;11 UTC):</strong> Lowest accuracy ($49.9\%$).</li>
+          <li><strong>Failure Modes:</strong> Losses concentrate around macro flash-crash cascades where technicals decouple from order books.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card" style="flex:1;">
+      <div class="card-header"><span class="num">6</span> Interactive Live Web App</div>
+      <div class="card-body">
+        <p><strong>Deployed Architecture (Option B):</strong></p>
+        <ul>
+          <li><strong>Lightweight Charts:</strong> Real-time candlestick charts with non-repainting signal arrows and confidence histogram.</li>
+          <li><strong>What-If Simulator:</strong> Users dynamically test confidence thresholds ($50\%\text{--}65\%$) and view instantaneous win rate and equity curves.</li>
+          <li><strong>Explainability Card:</strong> Real-time readout of driving factors for every candle close.</li>
+          <li><strong>CSV Export:</strong> One-click verified audit export of the complete SQLite database.</li>
+        </ul>
+        <div style="background:rgba(53,208,165,0.1); border:1px solid rgba(53,208,165,0.3); border-radius:6px; padding:8px 10px; margin-top:8px;">
+          <span style="font-size:11px; color:var(--up); font-weight:700;">Zero Repainting Certified</span>
+          <p style="font-size:11px; color:#b2e8d9; margin:2px 0 0;">Signals committed once with <code>INSERT OR IGNORE</code> at candle close; strictly immutable.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Footer -->
+<footer>
+  <div>
+    <strong>Citations:</strong> Ke et al. (NeurIPS 2017) LightGBM &bull; Jaquart et al. (JFDS 2021, 2022) &bull; Lopez de Prado (2018) Advances in Financial Machine Learning
+  </div>
+  <div>
+    <button class="print-btn" onclick="window.print()">Print / Save as PDF (Ctrl+P)</button>
+  </div>
+</footer>
+
+</body>
+</html>

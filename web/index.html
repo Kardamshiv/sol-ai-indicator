@@ -3,133 +3,660 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SOL AI indicator</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<title>SOL AI Trading Indicator & Predictor</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
-  :root{--bg:#101826;--panel:#17223a;--line:#27365a;--text:#e6ebf5;--mute:#8c9ab8;--up:#35d0a5;--down:#ff6b7a;--flat:#8c9ab8}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;display:grid;grid-template-columns:1fr 300px;grid-template-rows:auto 1fr auto;height:100vh}
-  header{grid-column:1/3;padding:12px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline}
-  h1{font-size:17px;margin:0;font-weight:600}
-  #price{font:500 18px "IBM Plex Mono",monospace}
-  #chart{min-height:0}
-  aside{background:var(--panel);border-left:1px solid var(--line);padding:20px;overflow:auto}
-  #sig{font-size:44px;font-weight:600;line-height:1.1;margin:4px 0}
-  #sig.up{color:var(--up)} #sig.down{color:var(--down)} #sig.none{color:var(--flat);font-size:30px}
-  .bar{height:8px;background:var(--line);border-radius:4px;margin:8px 0 4px;overflow:hidden}
-  #fill{height:100%;width:0;background:var(--flat);transition:width .3s}
-  .mute{color:var(--mute);font-size:13px}
-  dl{margin:18px 0 0;display:grid;grid-template-columns:1fr auto;gap:6px 10px}
-  dt{color:var(--mute)} dd{margin:0;font-family:"IBM Plex Mono",monospace;text-align:right}
-  h2{font-size:13px;color:var(--mute);margin:22px 0 6px;font-weight:600}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{padding:4px 0;text-align:left;border-bottom:1px solid var(--line)} th{color:var(--mute);font-weight:400} td.r,th.r{text-align:right}
-  .hit{color:var(--up)} .miss{color:var(--down)}
-  footer{grid-column:1/3;padding:8px 20px;border-top:1px solid var(--line);color:var(--mute);font-size:12px}
-  @media(max-width:760px){body{grid-template-columns:1fr;grid-template-rows:auto 55vh auto auto;height:auto}header,footer{grid-column:1}aside{border-left:0;border-top:1px solid var(--line)}}
+  :root {
+    --bg: #0d131f;
+    --panel: #141c2e;
+    --panel-sub: #1b263d;
+    --line: #263554;
+    --line-light: #36486e;
+    --text: #e6ebf5;
+    --mute: #8c9ab8;
+    --up: #35d0a5;
+    --up-bg: rgba(53,208,165,0.12);
+    --down: #ff6b7a;
+    --down-bg: rgba(255,107,122,0.12);
+    --flat: #8c9ab8;
+    --accent: #4c82fb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 "IBM Plex Sans", system-ui, sans-serif;
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    grid-template-rows: auto 1fr auto;
+    height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    grid-column: 1 / 3;
+    padding: 10px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: -0.2px; }
+  .badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--panel-sub);
+    border: 1px solid var(--line);
+    color: var(--mute);
+  }
+  #price-box { font: 500 17px "IBM Plex Mono", monospace; display: flex; align-items: center; gap: 14px; }
+  #price { color: var(--text); font-weight: 600; }
+  #chart-container { position: relative; min-height: 0; display: flex; flex-direction: column; }
+  #chart { flex: 1; min-height: 0; }
+  
+  /* Right Sidebar */
+  aside {
+    background: var(--panel);
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .nav-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .tab-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--mute);
+    padding: 11px 8px;
+    font: 500 12px "IBM Plex Sans", sans-serif;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all .2s;
+    text-align: center;
+  }
+  .tab-btn:hover { color: var(--text); background: rgba(255,255,255,0.02); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); background: var(--panel); }
+  .tab-pane { padding: 18px; overflow-y: auto; flex: 1; display: none; }
+  .tab-pane.active { display: block; }
+  
+  /* Signal Card */
+  .signal-card {
+    background: var(--panel-sub);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--mute); font-weight: 500; }
+  #sig { font-size: 36px; font-weight: 600; line-height: 1.1; margin: 6px 0 8px; }
+  #sig.up { color: var(--up); }
+  #sig.down { color: var(--down); }
+  #sig.none { color: var(--flat); font-size: 26px; }
+  .bar-wrapper { margin: 8px 0; }
+  .bar { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  #fill { height: 100%; width: 0; background: var(--flat); transition: width .3s; }
+  .conf-text { font-size: 12px; color: var(--mute); display: flex; justify-content: space-between; }
+  
+  /* Explainability / Drivers */
+  .drivers-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .driver-item {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0,0,0,0.2);
+    border-left: 3px solid var(--flat);
+  }
+  .driver-item.bullish { border-left-color: var(--up); }
+  .driver-item.bearish { border-left-color: var(--down); }
+  .driver-val { font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+  .driver-val.bullish { color: var(--up); }
+  .driver-val.bearish { color: var(--down); }
+  
+  /* Data Lists */
+  dl { margin: 14px 0 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; font-size: 13px; }
+  dt { color: var(--mute); }
+  dd { margin: 0; font-family: "IBM Plex Mono", monospace; text-align: right; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--mute); margin: 20px 0 8px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  
+  /* Table & Filters */
+  .filter-row { display: flex; gap: 4px; margin-bottom: 8px; }
+  .pill-btn {
+    background: var(--panel-sub);
+    border: 1px solid var(--line);
+    color: var(--mute);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .pill-btn:hover { color: var(--text); border-color: var(--line-light); }
+  .pill-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 5px 0; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--mute); font-weight: 400; }
+  td.r, th.r { text-align: right; }
+  .hit { color: var(--up); font-weight: 500; }
+  .miss { color: var(--down); font-weight: 500; }
+  
+  /* Simulator / What-If */
+  .sim-control { background: var(--panel-sub); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .slider-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 8px 0; cursor: pointer; }
+  .btn-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font: 500 13px "IBM Plex Sans", sans-serif;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity .2s;
+  }
+  .btn-action:hover { opacity: 0.9; }
+  .btn-secondary { background: var(--panel-sub); border: 1px solid var(--line); color: var(--text); margin-top: 8px; }
+  .btn-secondary:hover { border-color: var(--line-light); background: #202d47; }
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .kpi-card { background: rgba(0,0,0,0.25); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+  .kpi-title { font-size: 11px; color: var(--mute); margin-bottom: 2px; }
+  .kpi-val { font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 600; }
+  
+  /* Sparkline */
+  .chart-box { background: rgba(0,0,0,0.2); border: 1px solid var(--line); border-radius: 6px; padding: 10px; margin-top: 10px; }
+  svg.sparkline { width: 100%; height: 75px; overflow: visible; }
+  
+  footer {
+    grid-column: 1 / 3;
+    padding: 6px 20px;
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--mute);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+  }
+  
+  @media (max-width: 860px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 50vh auto auto; height: auto; overflow: auto; }
+    header, footer { grid-column: 1; }
+    aside { border-left: 0; border-top: 1px solid var(--line); height: auto; }
+  }
 </style>
 </head>
 <body>
-<header><h1 id="title">SOL AI indicator</h1><span><span id="status" class="mute"></span>&nbsp;&nbsp;<span id="price">-</span></span></header>
-<div id="chart"></div>
+
+<header>
+  <div class="brand">
+    <h1 id="title">SOLUSDT AI Indicator</h1>
+    <span class="badge" id="model-badge">LightGBM Directional</span>
+    <span class="badge" id="cal-badge">Platt Calibrated</span>
+  </div>
+  <div id="price-box">
+    <span id="status" class="mute">&bull; Connecting...</span>
+    <span id="price">--.--</span>
+  </div>
+</header>
+
+<div id="chart-container">
+  <div id="chart"></div>
+</div>
+
 <aside>
-  <div class="mute">Latest closed candle</div>
-  <div id="sig" class="none">Waiting</div>
-  <div class="bar"><div id="fill"></div></div>
-  <div class="mute" id="conf">Confidence -</div>
-  <dl>
-    <dt>Next candle closes in</dt><dd id="cd">-</dd>
-    <dt>Signals scored</dt><dd id="n">0</dd>
-    <dt>Hit rate</dt><dd id="hit">-</dd>
-    <dt>Always-up hit rate</dt><dd id="base">-</dd>
-    <dt>Net per trade (after costs)</dt><dd id="net">-</dd>
-    <dt>Candles analysed</dt><dd id="an">0</dd>
-    <dt>Signals fired</dt><dd id="fired">0</dd>
-  </dl>
-  <h2 id="refh">Validation reference (past data, not live)</h2>
-  <dl id="ref" style="margin-top:0"></dl>
-  <h2>Open signal</h2>
-  <div id="open" class="mute">No open signal.</div>
-  <h2>Recent signals</h2>
-  <table id="recent"><thead><tr><th>Candle (UTC)</th><th>Call</th><th class="r">Result</th></tr></thead><tbody></tbody></table>
-  <p class="mute" style="margin-top:18px">Arrows mark confident predictions made when a candle closed; they never change afterwards. The strip under the chart shows confidence on every candle: bright bars cross the threshold (signal), faint bars do not (no clear signal).</p>
+  <div class="nav-tabs">
+    <button class="tab-btn active" onclick="switchTab('tab-live')">Live Indicator</button>
+    <button class="tab-btn" onclick="switchTab('tab-sim')">What-If Simulator</button>
+    <button class="tab-btn" onclick="switchTab('tab-exp')">Explainability</button>
+  </div>
+
+  <!-- TAB 1: LIVE INDICATOR -->
+  <div id="tab-live" class="tab-pane active">
+    <div class="signal-card">
+      <div class="card-label">Next 1-Hour Prediction</div>
+      <div id="sig" class="none">Waiting</div>
+      <div class="bar-wrapper">
+        <div class="bar"><div id="fill"></div></div>
+      </div>
+      <div class="conf-text">
+        <span id="conf-val">Confidence: --</span>
+        <span id="cutoff-val">Cutoff: --</span>
+      </div>
+      <div id="drivers-box" style="margin-top:12px; display:none;">
+        <div class="card-label" style="margin-bottom:4px;">Key Driving Factors</div>
+        <div class="drivers-list" id="drivers-list"></div>
+      </div>
+    </div>
+
+    <dl>
+      <dt>Candle closes in</dt><dd id="cd">--:--</dd>
+      <dt>Signals scored (live)</dt><dd id="n">0</dd>
+      <dt>Live Hit rate</dt><dd id="hit">--</dd>
+      <dt>Always-Up baseline</dt><dd id="base">--</dd>
+      <dt>Net return (after fees)</dt><dd id="net">--</dd>
+      <dt>Candles monitored</dt><dd id="an">0</dd>
+      <dt>Signals triggered</dt><dd id="fired">0</dd>
+    </dl>
+    <div style="background: rgba(58,123,213,0.08); border: 1px solid rgba(58,123,213,0.25); border-radius: 6px; padding: 8px 10px; margin-top: 10px; font-size: 11.5px; color: var(--mute);">
+      <strong style="color: #b8d3ff;">How Live Scoring Works:</strong>
+      A signal triggers when confidence &ge; 53.5% (abstaining on noise). Each trade is held for 1 hour (4 candles) before exit price and hit/miss are recorded.
+    </div>
+
+    <h2>Active Open Signal</h2>
+    <div id="open" class="mute" style="font-size:12px; padding:6px 0;">No active position open.</div>
+
+    <h2>
+      <span>Recent Signals</span>
+      <a href="/api/signals/export" class="pill-btn" style="text-decoration:none;" title="Download verified signals CSV">&darr; Export CSV</a>
+    </h2>
+    <div class="filter-row">
+      <button class="pill-btn active" onclick="filterSignals('all', this)">All</button>
+      <button class="pill-btn" onclick="filterSignals('up', this)">Up Only</button>
+      <button class="pill-btn" onclick="filterSignals('down', this)">Down Only</button>
+      <button class="pill-btn" onclick="filterSignals('hit', this)">Hits</button>
+      <button class="pill-btn" onclick="filterSignals('miss', this)">Misses</button>
+    </div>
+    <table id="recent">
+      <thead>
+        <tr><th>Candle (UTC)</th><th>Call</th><th class="r">Result</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="3" class="mute">Loading signals...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- TAB 2: WHAT-IF SIMULATOR -->
+  <div id="tab-sim" class="tab-pane">
+    <div class="sim-control">
+      <div class="card-label">Interactive What-If Backtest</div>
+      <p style="color:var(--mute); font-size:12px; margin:4px 0 12px;">
+        Adjust the confidence threshold on 10,493 untouched test candles to simulate trade frequency and net returns.
+      </p>
+      
+      <div class="slider-row">
+        <span>Confidence Cutoff:</span>
+        <b id="slider-val" style="font-family:'IBM Plex Mono',monospace;">53.5%</b>
+      </div>
+      <input type="range" id="cutoff-slider" min="0.50" max="0.65" step="0.005" value="0.535" oninput="onSliderMove(this.value)">
+
+      <div class="slider-row" style="margin-top:8px;">
+        <span>Fee + Slippage (Round-trip):</span>
+        <b style="font-family:'IBM Plex Mono',monospace;">0.10%</b>
+      </div>
+
+      <button class="btn-action" style="margin-top:12px;" onclick="runSimulation()">
+        Run Simulation
+      </button>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-title">Signals Fired</div>
+        <div class="kpi-val" id="sim-trades">--</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Hit Rate (Win %)</div>
+        <div class="kpi-val" id="sim-win">--</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Always-Up Baseline</div>
+        <div class="kpi-val" id="sim-base">--</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Net Per Trade</div>
+        <div class="kpi-val" id="sim-net">--</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Total Strategy Return</div>
+        <div class="kpi-val" id="sim-tot">--</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Max Drawdown</div>
+        <div class="kpi-val" id="sim-dd">--</div>
+      </div>
+    </div>
+
+    <div class="chart-box">
+      <div class="card-label" style="margin-bottom:6px;">Simulated Equity Curve (Test Period)</div>
+      <svg class="sparkline" id="equity-svg" viewBox="0 0 300 75" preserveAspectRatio="none">
+        <path d="M 0 50 L 300 50" stroke="#263554" stroke-dasharray="2,2" fill="none"/>
+      </svg>
+      <div style="font-size:11px; color:var(--mute); margin-top:4px; display:flex; justify-content:space-between;">
+        <span>Trade #1</span>
+        <span id="bh-comparison">Buy & Hold: --</span>
+        <span id="sim-final-eq">Final: --</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: EXPLAINABILITY & ARCHITECTURE -->
+  <div id="tab-exp" class="tab-pane">
+    <div class="card-label" style="margin-bottom:8px;">Model Architecture & Features</div>
+    <p style="color:var(--mute); font-size:12px; margin-top:0;">
+      A LightGBM Direction Classifier trained exclusively on non-noise candles (<span style="font-family:'IBM Plex Mono',monospace;">|return| &gt; 0.20%</span>), paired with Platt Probability Scaling to map log-odds to realistic empirical probabilities.
+    </p>
+
+    <h2>Permutation Feature Importance</h2>
+    <table id="imp-table">
+      <thead>
+        <tr><th>Feature</th><th>Category</th><th class="r">&Delta; ROC-AUC</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="3" class="mute">Loading importance...</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Validation Reference (Frozen Protocol)</h2>
+    <dl id="ref-dl" style="margin-top:0;"></dl>
+
+    <h2>Scientific Safeguards</h2>
+    <ul style="color:var(--mute); font-size:12px; padding-left:18px; margin:6px 0;">
+      <li><b>Zero Repainting:</b> Signals stored once with <code style="color:var(--text);">INSERT OR IGNORE</code> at candle close.</li>
+      <li><b>Leakage Free:</b> 4-candle embargo between splits; strictly causal closed-candle inputs.</li>
+      <li><b>Abstention Cutoff:</b> Abstains on ambiguous candles to prevent fee churn.</li>
+    </ul>
+  </div>
 </aside>
-<footer>Paper trading only. Not financial advice. Chart times are UTC (India time = UTC+5:30).</footer>
+
+<footer>
+  <span>Paper trading only. Academic research indicator. Not financial advice.</span>
+  <span>Timezone: UTC | Horizon: 4 Candles (1 Hour)</span>
+</footer>
+
 <script>
 const $ = id => document.getElementById(id);
-const pct = x => (x*100).toFixed(2) + "%";
+const pct = x => (x * 100).toFixed(2) + "%";
+
+// Chart Setup
 const chart = LightweightCharts.createChart($("chart"), {
-  layout:{background:{color:"#101826"},textColor:"#8c9ab8"},
-  grid:{vertLines:{color:"#1d2a46"},horzLines:{color:"#1d2a46"}},
-  timeScale:{timeVisible:true,borderColor:"#27365a"}, rightPriceScale:{borderColor:"#27365a"},
-  autoSize:true});
-const series = chart.addCandlestickSeries({upColor:"#35d0a5",downColor:"#ff6b7a",borderVisible:false,wickUpColor:"#35d0a5",wickDownColor:"#ff6b7a"});
-const conf = chart.addHistogramSeries({priceScaleId:"conf", lastValueVisible:false, priceLineVisible:false,
-  priceFormat:{type:"custom", formatter:v=>Math.round((v+0.5)*100)+"%"}});
-chart.priceScale("conf").applyOptions({scaleMargins:{top:0.82,bottom:0}});
-series.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.22}});
-let meta, lastOpen = 0;
+  layout: { background: { color: "#0d131f" }, textColor: "#8c9ab8" },
+  grid: { vertLines: { color: "#17223a" }, horzLines: { color: "#17223a" } },
+  timeScale: { timeVisible: true, borderColor: "#263554" },
+  rightPriceScale: { borderColor: "#263554" },
+  autoSize: true
+});
+const series = chart.addCandlestickSeries({
+  upColor: "#35d0a5", downColor: "#ff6b7a", borderVisible: false,
+  wickUpColor: "#35d0a5", wickDownColor: "#ff6b7a"
+});
+const confSeries = chart.addHistogramSeries({
+  priceScaleId: "conf", lastValueVisible: false, priceLineVisible: false,
+  priceFormat: { type: "custom", formatter: v => Math.round((v + 0.5) * 100) + "%" }
+});
+chart.priceScale("conf").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+series.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.22 } });
 
-async function init(){
-  meta = await (await fetch("/api/meta")).json();
-  conf.createPriceLine({price:meta.cutoff-0.5, color:"#8c9ab8", lineStyle:2, lineWidth:1, title:"signal threshold"});
-  fetch("/api/reference").then(r=>r.json()).then(r=>{
-    if(r.trades){ $("refh").textContent = `Validation reference: ${r.period} (not live)`;
-      $("ref").innerHTML = `<dt>Signals</dt><dd>${r.trades}</dd><dt>Hit rate</dt><dd>${pct(r.hit_rate)}</dd><dt>95% range</dt><dd>${pct(r.hit_ci_low)} to ${pct(r.hit_ci_high)}</dd><dt>Always-up hit rate</dt><dd>${pct(r.always_up_hit)}</dd><dt>Net per trade (after costs)</dt><dd>${pct(r.net_per_trade)}</dd>`; }
-    else { $("ref").innerHTML = "<dt>Reference not generated yet</dt><dd></dd>"; }
-  }).catch(()=>{});
-  $("title").textContent = `${meta.symbol} AI indicator - ${meta.interval}, ${meta.horizon}-candle horizon`;
-  while(true){                                   // server may still be warming up: retry until candles arrive
-    const d = await (await fetch("/api/candles")).json();
-    if(d.length){ series.setData(d); break; }
-    $("sig").className="none"; $("sig").textContent="Loading candles...";
-    await new Promise(r=>setTimeout(r,3000));
+let meta = null;
+let allSignals = [];
+let activeFilter = 'all';
+
+function switchTab(tabId) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+  event.target.classList.add("active");
+  $(tabId).classList.add("active");
+  if (tabId === 'tab-sim') {
+    runSimulation();
+  } else if (tabId === 'tab-exp') {
+    loadImportance();
   }
-  refresh(); setInterval(refresh, 5000); setInterval(tick, 1000);
+}
+
+async function init() {
+  meta = await (await fetch("/api/meta")).json();
+  confSeries.createPriceLine({
+    price: meta.cutoff - 0.5, color: "#8c9ab8", lineStyle: 2, lineWidth: 1, title: "Threshold"
+  });
+  
+  $("title").textContent = `${meta.symbol} AI Indicator (${meta.interval}, 1h Horizon)`;
+  $("cutoff-val").textContent = `Cutoff: ${(meta.cutoff * 100).toFixed(1)}%`;
+
+  // Fetch Reference Numbers
+  fetch("/api/reference").then(r => r.json()).then(r => {
+    if (r.trades) {
+      $("ref-dl").innerHTML = `
+        <dt>Evaluation Period</dt><dd>${r.period}</dd>
+        <dt>Validation Signals</dt><dd>${r.trades}</dd>
+        <dt>Direction Hit Rate</dt><dd>${pct(r.hit_rate)}</dd>
+        <dt>95% Bootstrap Range</dt><dd>${pct(r.hit_ci_low)} - ${pct(r.hit_ci_high)}</dd>
+        <dt>Always-Up Baseline</dt><dd>${pct(r.always_up_hit)}</dd>
+        <dt>Net / Trade (After Fees)</dt><dd>${pct(r.net_per_trade)}</dd>
+      `;
+    }
+  }).catch(() => {});
+
+  // Load Initial Candles
+  while (true) {
+    const d = await (await fetch("/api/candles")).json();
+    if (d.length) {
+      series.setData(d);
+      break;
+    }
+    $("sig").className = "none";
+    $("sig").textContent = "Loading candles...";
+    await new Promise(r => setTimeout(r, 2000));
+  }
+
+  refresh();
+  setInterval(refresh, 5000);
+  setInterval(tick, 1000);
+
+  // Live WebSocket Kline stream
   const ws = new WebSocket(`wss://data-stream.binance.vision/ws/${meta.symbol.toLowerCase()}@kline_${meta.interval}`);
-  ws.onmessage = e => { const k = JSON.parse(e.data).k;
-    series.update({time:Math.floor(k.t/1000),open:+k.o,high:+k.h,low:+k.l,close:+k.c});
-    $("price").textContent = (+k.c).toLocaleString(undefined,{minimumFractionDigits:2}); };
+  ws.onmessage = e => {
+    const k = JSON.parse(e.data).k;
+    series.update({ time: Math.floor(k.t / 1000), open: +k.o, high: +k.h, low: +k.l, close: +k.c });
+    $("price").textContent = (+k.c).toLocaleString(undefined, { minimumFractionDigits: 2 });
+  };
 }
 
-async function refresh(){
-  try{ const h = await (await fetch("/api/health")).json();
-    const ok = h.ok && h.last_close_age_sec < meta.interval_sec*2.5;
-    $("status").textContent = ok ? "\u25cf Live" : "\u25cf Data stalled"; $("status").style.color = ok ? "var(--up)" : "var(--down)";
-  }catch(e){ $("status").textContent = "\u25cf Server offline"; $("status").style.color = "var(--down)"; }
-  const sigs = await (await fetch("/api/signals")).json();
-  series.setMarkers(sigs.filter(s=>s.direction!==0).map(s=>({
-    time:s.open_time/1000, position:s.direction>0?"belowBar":"aboveBar",
-    color:s.direction>0?"#35d0a5":"#ff6b7a", shape:s.direction>0?"arrowUp":"arrowDown",
-    text:`${s.direction>0?"Up":"Down"} ${Math.round(s.confidence*100)}%`})));
-  conf.setData(sigs.map(x=>({time:x.open_time/1000, value:x.confidence-0.5,
-    color: x.direction>0 ? "#35d0a5" : x.direction<0 ? "#ff6b7a"
-         : x.lean>0 ? "rgba(53,208,165,0.25)" : x.lean<0 ? "rgba(255,107,122,0.25)" : "rgba(140,154,184,0.25)"})));
-  const l = sigs[sigs.length-1];
-  if(l){ const el=$("sig"), c=Math.round(l.confidence*100);
-    el.className = l.direction>0?"up":l.direction<0?"down":"none";
-    el.textContent = l.direction>0?`Up ${c}%`:l.direction<0?`Down ${c}%`:"No clear signal";
-    $("fill").style.width = c+"%"; $("fill").style.background = l.direction>0?"var(--up)":l.direction<0?"var(--down)":"var(--flat)";
-    const cut = Math.round(meta.cutoff*100), side = l.lean>0 ? "Up" : l.lean<0 ? "Down" : "-";
-    $("conf").textContent = l.direction!==0 ? `Confidence ${c}% (threshold ${cut}%)` : `Leaning ${side} at ${c}%, needs ${cut}% to signal`; }
-  const fmt = t => new Date(t*1000).toISOString().slice(5,16).replace("T"," ");
-  const fired = sigs.filter(x=>x.direction!==0), pend = fired.filter(x=>x.exit_price===null);
-  $("an").textContent = sigs.length; $("fired").textContent = fired.length;
-  const o = pend[pend.length-1];
-  $("open").innerHTML = o ? `<b style="color:${o.direction>0?"var(--up)":"var(--down)"}">${o.direction>0?"Up":"Down"} ${Math.round(o.confidence*100)}%</b> from ${o.entry_price.toFixed(2)}; result at ${fmt(o.open_time+(meta.horizon+1)*meta.interval_sec)} UTC` : "No open signal.";
-  $("recent").querySelector("tbody").innerHTML = fired.slice(-8).reverse().map(x=>`<tr><td>${fmt(x.open_time)}</td><td>${x.direction>0?"Up":"Down"} ${Math.round(x.confidence*100)}%</td><td class="r ${x.hit===null?"":x.hit?"hit":"miss"}">${x.hit===null?"pending":(x.hit?"hit ":"miss ")+(x.ret*x.direction*100).toFixed(2)+"%"}</td></tr>`).join("") || '<tr><td colspan="3" class="mute">No signals yet</td></tr>';
+async function refresh() {
+  try {
+    const h = await (await fetch("/api/health")).json();
+    const ok = h.ok && h.last_close_age_sec < meta.interval_sec * 2.5;
+    $("status").textContent = ok ? "\u25cf Live Stream" : "\u25cf Stream Stalled";
+    $("status").style.color = ok ? "var(--up)" : "var(--down)";
+  } catch (e) {
+    $("status").textContent = "\u25cf Server Offline";
+    $("status").style.color = "var(--down)";
+  }
+
+  // Fetch Signals
+  allSignals = await (await fetch("/api/signals")).json();
+  series.setMarkers(allSignals.filter(s => s.direction !== 0).map(s => ({
+    time: s.open_time / 1000,
+    position: s.direction > 0 ? "belowBar" : "aboveBar",
+    color: s.direction > 0 ? "#35d0a5" : "#ff6b7a",
+    shape: s.direction > 0 ? "arrowUp" : "arrowDown",
+    text: `${s.direction > 0 ? "Up" : "Down"} ${Math.round(s.confidence * 100)}%`
+  })));
+
+  confSeries.setData(allSignals.map(x => ({
+    time: x.open_time / 1000,
+    value: x.confidence - 0.5,
+    color: x.direction > 0 ? "#35d0a5" : x.direction < 0 ? "#ff6b7a"
+         : x.lean > 0 ? "rgba(53,208,165,0.25)" : x.lean < 0 ? "rgba(255,107,122,0.25)" : "rgba(140,154,184,0.25)"
+  })));
+
+  // Update Latest Signal Card
+  const l = allSignals[allSignals.length - 1];
+  if (l) {
+    const el = $("sig"), c = Math.round(l.confidence * 100);
+    el.className = l.direction > 0 ? "up" : l.direction < 0 ? "down" : "none";
+    el.textContent = l.direction > 0 ? `Up ${c}%` : l.direction < 0 ? `Down ${c}%` : "No Clear Signal";
+    $("fill").style.width = c + "%";
+    $("fill").style.background = l.direction > 0 ? "var(--up)" : l.direction < 0 ? "var(--down)" : "var(--flat)";
+    $("conf-val").textContent = `Confidence: ${c}%`;
+    const cut = Math.round(meta.cutoff * 100), side = l.lean > 0 ? "Up" : l.lean < 0 ? "Down" : "-";
+  }
+
+  // Update Drivers
+  fetchPredictDrivers();
+
+  // Render Signals Table
+  renderFilteredSignals();
+
+  // Render Stats
   const s = await (await fetch("/api/stats")).json();
-  $("n").textContent = s.n + (pend.length ? ` (+${pend.length} pending)` : "");
-  if(s.n){ $("hit").textContent=pct(s.hit_rate); $("base").textContent=pct(s.always_up_hit); $("net").textContent=pct(s.net_per_trade); }
-  else { ["hit","base","net"].forEach(k=>$(k).textContent="none yet"); }
+  const fired = allSignals.filter(x => x.direction !== 0);
+  const pend = fired.filter(x => x.exit_price === null);
+  $("an").textContent = allSignals.length;
+  $("fired").textContent = fired.length;
+  $("n").textContent = s.n + (pend.length ? ` (+${pend.length} open)` : "");
+  if (s.n && s.n > 0) {
+    $("hit").textContent = pct(s.hit_rate);
+    $("base").textContent = pct(s.always_up_hit);
+    $("net").textContent = pct(s.net_per_trade);
+  } else {
+    $("hit").innerHTML = "<span class='mute' style='font-size:12px;'>Waiting for 1st trade</span>";
+    $("base").innerHTML = "<span class='mute' style='font-size:12px;'>Waiting for 1st trade</span>";
+    $("net").innerHTML = "<span class='mute' style='font-size:12px;'>Waiting for 1st trade</span>";
+  }
+
+  const o = pend[pend.length - 1];
+  const fmt = t => new Date(t * 1000).toISOString().slice(5, 16).replace("T", " ");
+  $("open").innerHTML = o
+    ? `<b style="color:${o.direction > 0 ? "var(--up)" : "var(--down)"}">${o.direction > 0 ? "Up" : "Down"} ${Math.round(o.confidence * 100)}%</b> entered at \$${o.entry_price.toFixed(2)}; settles at ${fmt(o.open_time + (meta.horizon + 1) * meta.interval_sec)} UTC`
+    : "No active position open.";
 }
 
-function tick(){
-  if(!meta) return;
-  const left = meta.interval_sec - (Math.floor(Date.now()/1000) % meta.interval_sec);
-  $("cd").textContent = `${Math.floor(left/60)}:${String(left%60).padStart(2,"0")}`;
+async function fetchPredictDrivers() {
+  try {
+    const res = await (await fetch("/api/predict/latest")).json();
+    if (res.status === "ok" && res.drivers && res.drivers.length) {
+      $("drivers-box").style.display = "block";
+      $("drivers-list").innerHTML = res.drivers.map(d => `
+        <div class="driver-item ${d.impact}">
+          <span>${d.name}</span>
+          <span class="driver-val ${d.impact}">${d.value}</span>
+        </div>
+      `).join("");
+    }
+  } catch (e) {}
 }
+
+function filterSignals(type, btn) {
+  activeFilter = type;
+  document.querySelectorAll(".filter-row .pill-btn").forEach(p => p.classList.remove("active"));
+  btn.classList.add("active");
+  renderFilteredSignals();
+}
+
+function renderFilteredSignals() {
+  const fired = allSignals.filter(x => x.direction !== 0);
+  let list = fired;
+  if (activeFilter === 'up') list = fired.filter(x => x.direction > 0);
+  else if (activeFilter === 'down') list = fired.filter(x => x.direction < 0);
+  else if (activeFilter === 'hit') list = fired.filter(x => x.hit === 1);
+  else if (activeFilter === 'miss') list = fired.filter(x => x.hit === 0);
+
+  const fmt = t => new Date(t * 1000).toISOString().slice(5, 16).replace("T", " ");
+  if (list.length === 0) {
+    let msg = "No confident signals triggered yet (model is abstaining on noise).";
+    if (activeFilter !== 'all') msg = `No ${activeFilter.toUpperCase()} signals recorded yet. Switch filter to "All".`;
+    $("recent").querySelector("tbody").innerHTML = `<tr><td colspan="3" class="mute" style="text-align:center; padding:12px 0;">${msg}</td></tr>`;
+    return;
+  }
+  $("recent").querySelector("tbody").innerHTML = list.slice(-8).reverse().map(x => `
+    <tr>
+      <td>${fmt(x.open_time)}</td>
+      <td><span style="color:${x.direction > 0 ? 'var(--up)' : 'var(--down)'}">${x.direction > 0 ? '&uarr; Up' : '&darr; Down'}</span> ${Math.round(x.confidence * 100)}%</td>
+      <td class="r ${x.hit === null ? '' : x.hit ? 'hit' : 'miss'}">${x.hit === null ? 'pending' : (x.hit ? 'hit ' : 'miss ') + (x.ret * x.direction * 100).toFixed(2) + '%'}</td>
+    </tr>
+  `).join("");
+}
+
+function onSliderMove(val) {
+  $("slider-val").textContent = (+val * 100).toFixed(1) + "%";
+}
+
+async function runSimulation() {
+  const cut = $("cutoff-slider").value;
+  try {
+    const res = await (await fetch(`/api/backtest/simulate?cutoff=${cut}`)).json();
+    $("sim-trades").textContent = res.total_trades + ` (${res.coverage_pct}% candles)`;
+    $("sim-win").textContent = res.win_rate.toFixed(1) + "%";
+    $("sim-base").textContent = res.always_up_win_rate.toFixed(1) + "%";
+    $("sim-net").textContent = (res.net_per_trade_pct >= 0 ? "+" : "") + res.net_per_trade_pct.toFixed(3) + "%";
+    $("sim-tot").textContent = (res.total_return_pct >= 0 ? "+" : "") + res.total_return_pct.toFixed(2) + "%";
+    $("sim-tot").style.color = res.total_return_pct >= 0 ? "var(--up)" : "var(--down)";
+    $("sim-dd").textContent = res.max_drawdown_pct.toFixed(2) + "%";
+    $("bh-comparison").textContent = `Buy & Hold: ${res.buy_and_hold_pct >= 0 ? '+' : ''}${res.buy_and_hold_pct.toFixed(1)}%`;
+    $("sim-final-eq").textContent = `Final: ${res.curve[res.curve.length - 1].toFixed(3)}x`;
+
+    // Draw SVG sparkline
+    drawSparkline(res.curve);
+  } catch (e) {
+    console.error("Simulation error", e);
+  }
+}
+
+function drawSparkline(points) {
+  if (!points || points.length < 2) return;
+  const min = Math.min(...points, 1.0);
+  const max = Math.max(...points, 1.0);
+  const range = max - min || 1;
+  const w = 300, h = 75, pad = 5;
+
+  const getX = idx => (idx / (points.length - 1)) * w;
+  const getY = val => h - pad - ((val - min) / range) * (h - 2 * pad);
+
+  const baselineY = getY(1.0);
+  let d = `M ${getX(0)} ${getY(points[0])}`;
+  for (let i = 1; i < points.length; i++) {
+    d += ` L ${getX(i)} ${getY(points[i])}`;
+  }
+
+  const strokeColor = points[points.length - 1] >= 1.0 ? "var(--up)" : "var(--down)";
+  $("equity-svg").innerHTML = `
+    <line x1="0" y1="${baselineY}" x2="${w}" y2="${baselineY}" stroke="#263554" stroke-dasharray="3,3" />
+    <path d="${d}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round"/>
+  `;
+}
+
+async function loadImportance() {
+  try {
+    const list = await (await fetch("/api/features/importance")).json();
+    if (list && list.length) {
+      $("imp-table").querySelector("tbody").innerHTML = list.slice(0, 10).map(x => {
+        const val = +(x.drop_mean ?? x.mean ?? 0);
+        return `
+          <tr>
+            <td><code style="color:var(--text);">${x.feature}</code></td>
+            <td><span class="badge">${x.group || 'indicator'}</span></td>
+            <td class="r" style="font-family:'IBM Plex Mono',monospace; color:var(--accent);">${val >= 0 ? '+' : ''}${val.toFixed(4)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+  } catch (e) {}
+}
+
+function tick() {
+  if (!meta) return;
+  const left = meta.interval_sec - (Math.floor(Date.now() / 1000) % meta.interval_sec);
+  $("cd").textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+}
+
 init();
 </script>
 </body>
