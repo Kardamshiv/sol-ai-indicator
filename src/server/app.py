@@ -163,6 +163,8 @@ def backfill():
     for k in r.json():
         if k[6] < now:
             process(rest_row(k), live=not warm)
+    if warm and len(candles) >= 120:
+        predict_and_store()
 
 
 async def stream():

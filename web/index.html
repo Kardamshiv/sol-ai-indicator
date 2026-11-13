@@ -542,14 +542,24 @@ async function refresh() {
 async function fetchPredictDrivers() {
   try {
     const res = await (await fetch("/api/predict/latest")).json();
-    if (res.status === "ok" && res.drivers && res.drivers.length) {
-      $("drivers-box").style.display = "block";
-      $("drivers-list").innerHTML = res.drivers.map(d => `
-        <div class="driver-item ${d.impact}">
-          <span>${d.name}</span>
-          <span class="driver-val ${d.impact}">${d.value}</span>
-        </div>
-      `).join("");
+    if (res.status === "ok") {
+      if (allSignals.length === 0 && res.confidence != null) {
+        const el = $("sig"), c = Math.round(res.confidence * 100);
+        el.className = res.direction > 0 ? "up" : res.direction < 0 ? "down" : "none";
+        el.textContent = res.direction > 0 ? `Up ${c}%` : res.direction < 0 ? `Down ${c}%` : "No Clear Signal";
+        $("fill").style.width = c + "%";
+        $("fill").style.background = res.direction > 0 ? "var(--up)" : res.direction < 0 ? "var(--down)" : "var(--flat)";
+        $("conf-val").textContent = `Confidence: ${c}%`;
+      }
+      if (res.drivers && res.drivers.length) {
+        $("drivers-box").style.display = "block";
+        $("drivers-list").innerHTML = res.drivers.map(d => `
+          <div class="driver-item ${d.impact}">
+            <span>${d.name}</span>
+            <span class="driver-val ${d.impact}">${d.value}</span>
+          </div>
+        `).join("");
+      }
     }
   } catch (e) {}
 }
