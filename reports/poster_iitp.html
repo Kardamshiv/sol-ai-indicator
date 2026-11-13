@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IIT Patna - Leakage-Free ML Directional Predictor & Calibrated AI Indicator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&family=Public+Sans:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --primary-navy: #0b1f3f;
+    --navy-dark: #061226;
+    --navy-light: #16325c;
+    --accent-gold: #c59b27;
+    --accent-blue: #0284c7;
+    --bg-page: #eef2f6;
+    --card-bg: #ffffff;
+    --border-color: #cbd5e1;
+    --text-main: #1e293b;
+    --text-muted: #475569;
+    --badge-bg: #e0f2fe;
+    --badge-text: #0369a1;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background-color: #334155;
+    font-family: 'Public Sans', sans-serif;
+    color: var(--text-main);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  /* 16:9 Poster Container (Scaled to 1920x1080 design canvas) */
+  .poster-wrapper {
+    width: 1920px;
+    height: 1080px;
+    max-width: 100vw;
+    max-height: 56.25vw;
+    background: var(--bg-page);
+    box-shadow: 0 25px 60px rgba(0,0,0,0.45);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 30px 20px 30px;
+    position: relative;
+  }
+
+  @media print {
+    body { background: none; padding: 0; }
+    .poster-wrapper {
+      width: 100vw;
+      height: 56.25vw;
+      max-width: none;
+      max-height: none;
+      box-shadow: none;
+      border-radius: 0;
+      page-break-inside: avoid;
+    }
+    @page {
+      size: 1920px 1080px landscape;
+      margin: 0;
+    }
+  }
+
+  /* Header */
+  header {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    display: grid;
+    grid-template-columns: 140px 1fr 180px;
+    align-items: center;
+    padding: 12px 28px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    margin-bottom: 18px;
+  }
+
+  .logo-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .logo-box img {
+    max-height: 90px;
+    object-fit: contain;
+  }
+
+  .header-center {
+    text-align: center;
+    padding: 0 20px;
+  }
+  .header-center h1 {
+    font-family: 'Crimson Pro', serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--primary-navy);
+    line-height: 1.2;
+    letter-spacing: -0.3px;
+  }
+  .header-center .authors {
+    margin-top: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent-blue);
+  }
+  .header-center .authors span {
+    color: var(--text-muted);
+    font-weight: 400;
+    margin: 0 8px;
+  }
+  .header-center .affil {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-top: 3px;
+    font-family: 'Crimson Pro', serif;
+    font-style: italic;
+  }
+
+  /* Main Grid Columns */
+  .grid-container {
+    display: grid;
+    grid-template-columns: 28% 42% 30%;
+    gap: 20px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .col-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .section-title {
+    font-family: 'Crimson Pro', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--primary-navy);
+    border-bottom: 2px solid var(--accent-gold);
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .section-title .badge {
+    font-family: 'Public Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: #92400e;
+    margin-top: 10px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  h3:first-of-type { margin-top: 0; }
+
+  p {
+    font-size: 13.5px;
+    line-height: 1.48;
+    color: #334155;
+    text-align: justify;
+    margin-bottom: 8px;
+  }
+
+  ul {
+    margin-left: 18px;
+    margin-bottom: 8px;
+  }
+  li {
+    font-size: 13px;
+    line-height: 1.45;
+    color: #334155;
+    margin-bottom: 4px;
+  }
+  li strong {
+    color: var(--primary-navy);
+  }
+
+  /* Figure Styling */
+  .figure-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px;
+    margin: 8px 0;
+    text-align: center;
+  }
+  .figure-box img {
+    max-width: 100%;
+    max-height: 240px;
+    border-radius: 4px;
+    object-fit: contain;
+  }
+  .caption {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 5px;
+    font-family: 'Crimson Pro', serif;
+  }
+
+  /* Algorithm Box */
+  .algo-box {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-left: 4px solid var(--primary-navy);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-top: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    color: #0f172a;
+  }
+  .algo-title {
+    font-family: 'Crimson Pro', serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--primary-navy);
+    margin-bottom: 4px;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 3px;
+  }
+  .algo-line { margin: 2px 0; }
+  .algo-kw { font-weight: 700; color: #0369a1; }
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+    margin: 8px 0;
+  }
+  th, td {
+    padding: 6px 8px;
+    text-align: center;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  th {
+    background: var(--primary-navy);
+    color: #ffffff;
+    font-weight: 600;
+    font-family: 'Crimson Pro', serif;
+    font-size: 12.5px;
+  }
+  th:first-child, td:first-child { text-align: left; }
+  tr:nth-child(even) { background: #f8fafc; }
+  tr.highlight {
+    background: #e0f2fe;
+    font-weight: 700;
+    color: #0369a1;
+  }
+
+  /* Bottom Reference Banner */
+  footer {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px 20px;
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  footer strong {
+    color: var(--primary-navy);
+    white-space: nowrap;
+    font-family: 'Crimson Pro', serif;
+    font-size: 14px;
+  }
+  .ref-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.35;
+  }
+</style>
+</head>
+<body>
+
+<div class="poster-wrapper">
+  <!-- Header -->
+  <header>
+    <div class="logo-box">
+      <img src="assets/iit_patna_logo.png" alt="IIT Patna Seal">
+    </div>
+    <div class="header-center">
+      <h1>Leakage-Free Machine Learning Directional Predictor & Calibrated AI Indicator for High-Volatility Asset Trading</h1>
+      <div class="authors">
+        Kardam Shiv <span>•</span> Roll No: 2201CS01 <span>•</span> IMPACT Lab
+      </div>
+      <div class="affil">
+        Department of Computer Science & Engineering, Indian Institute of Technology Patna
+      </div>
+    </div>
+    <div class="logo-box">
+      <img src="assets/impact_lab_logo.png" alt="IMPACT Lab Logo">
+    </div>
+  </header>
+
+  <!-- Content Grid -->
+  <div class="grid-container">
+    
+    <!-- Left Column -->
+    <div class="col-card">
+      <div class="section-title">
+        1. Overview & Problem Definition
+        <span class="badge">Motivation</span>
+      </div>
+
+      <h3>Abstract</h3>
+      <p>
+        High-frequency cryptocurrency markets exhibit severe non-stationarity, microstructure noise, and regime shifts. Existing technical indicators suffer from lookahead bias and indicator repainting, producing inflated paper returns that collapse in live execution [1]. We develop a leakage-free machine learning framework for Solana (SOLUSDT) 15-minute directional prediction over a 1-hour forward horizon (4 bars). Evaluated across 70,079 Binance klines (2024–2026), our LightGBM model achieves 54.7% Purged Cross-Validation accuracy and 58.3% test accuracy at confident signals, outperforming technical baselines with zero live repainting.
+      </p>
+
+      <h3>Introduction & Motivation</h3>
+      <ul>
+        <li><strong>High Volatility:</strong> Cryptocurrency assets display extreme volatility and fat-tailed return distributions, challenging conventional momentum indicators [1].</li>
+        <li><strong>Microstructure Noise:</strong> Traditional indicators (RSI, MACD, Bollinger Bands) yield false-positive chop and repaint signals dynamically after bar closes.</li>
+        <li><strong>Data Leakage Pitfalls:</strong> Naive ML setups leak future information via global standardizers, non-causal rolling windows, or overlapping multi-step returns [2].</li>
+      </ul>
+
+      <h3>Problem Statement</h3>
+      <p>
+        Design and deploy a strictly leak-free directional predictor and production streaming architecture that forecasts 1-hour SOLUSDT price direction with calibrated probabilities, statistically significant edge over random walk, and deterministic, zero-repainting live execution.
+      </p>
+    </div>
+
+    <!-- Middle Column -->
+    <div class="col-card">
+      <div class="section-title">
+        2. Proposed Methodology & Pipeline
+        <span class="badge">Architecture</span>
+      </div>
+
+      <h3>Key Contributions</h3>
+      <ul>
+        <li><strong>Strict Point-in-Time Pipeline:</strong> 33 engineered causal features computed exclusively on completed candle closes (\(t \le T\)) with expanding-window normalization.</li>
+        <li><strong>5-Fold Purged & Embargoed CV:</strong> Eliminates serial correlation and target overlap leakage across train/validation folds (4-bar embargo period).</li>
+        <li><strong>Post-Hoc Platt Calibration:</strong> Maps raw boosting margins into true posterior probabilities, optimizing Brier score from 0.250 down to 0.244.</li>
+        <li><strong>Production Live Deployment:</strong> Live Binance WebSocket ingest, FastAPI backend, Lightweight-Charts UI, and What-If backtesting engine on Render cloud.</li>
+      </ul>
+
+      <div class="figure-box">
+        <img src="assets/architecture_diagram.png" alt="Architecture Diagram">
+        <div class="caption">Figure 1: End-to-End Leak-Free Machine Learning Architecture & Real-Time Production Flow</div>
+      </div>
+
+      <div class="algo-box">
+        <div class="algo-title">Algorithm 1: Leak-Free Directional Signal Ingest & Inference</div>
+        <div class="algo-line"><span class="algo-kw">Require:</span> 15m OHLCV stream \(\mathcal{S} = \{(O_t, H_t, L_t, C_t, V_t)\}\); Horizon \(h=4\); Threshold \(\tau = 0.53\)</div>
+        <div class="algo-line"><span class="algo-kw">Ensure:</span> Calibrated Signal \(\hat{y}_t \in \{\text{BUY}, \text{NEUTRAL}, \text{SELL}\}\) with confidence \(P_t\)</div>
+        <div class="algo-line">1: At candle close \(t\), extract 33 causal features \(X_t\) using strictly past observations.</div>
+        <div class="algo-line">2: Label directional target \(y_t = \mathbb{I}(C_{t+4} > C_t)\). Partition with 5-Fold Purged CV.</div>
+        <div class="algo-line">3: Train LightGBM classifier \(f^*\) and fit Platt Sigmoid calibrator \(P(y=1|f^*)\).</div>
+        <div class="algo-line">4: For live bar \(t\): \(P_t \leftarrow \text{Calibrate}(f^*(X_t))\).</div>
+        <div class="algo-line">5: <strong>if</strong> \(P_t \ge \tau\) <strong>then</strong> \(\hat{y}_t \leftarrow \text{BUY}\) <strong>else if</strong> \(P_t \le 1 - \tau\) <strong>then</strong> \(\hat{y}_t \leftarrow \text{SELL}\) <strong>else</strong> \(\hat{y}_t \leftarrow \text{NEUTRAL}\)</div>
+        <div class="algo-line">6: Broadcast immutable signal to WebSocket subscribers (Zero Repainting).</div>
+      </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="col-card">
+      <div class="section-title">
+        3. Experimental Results & Analysis
+        <span class="badge">Evaluation</span>
+      </div>
+
+      <h3>Benchmark Comparison</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Model / Strategy</th>
+            <th>CV AUC</th>
+            <th>CV Acc</th>
+            <th>Brier</th>
+            <th>Test Acc</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Always Up (Majority)</td>
+            <td>0.500</td>
+            <td>50.3%</td>
+            <td>0.250</td>
+            <td>49.9%</td>
+          </tr>
+          <tr>
+            <td>Persistence (1h Ret)</td>
+            <td>0.490</td>
+            <td>49.3%</td>
+            <td>0.252</td>
+            <td>47.5%</td>
+          </tr>
+          <tr>
+            <td>RSI Rule (30/70)</td>
+            <td>0.522</td>
+            <td>51.4%</td>
+            <td>0.251</td>
+            <td>51.9%</td>
+          </tr>
+          <tr>
+            <td>Logistic Regression</td>
+            <td>0.514</td>
+            <td>50.5%</td>
+            <td>0.251</td>
+            <td>52.5%</td>
+          </tr>
+          <tr>
+            <td>Random Forest</td>
+            <td>0.523</td>
+            <td>51.5%</td>
+            <td>0.251</td>
+            <td>56.5%</td>
+          </tr>
+          <tr class="highlight">
+            <td>LightGBM + Platt (Ours)</td>
+            <td>0.525</td>
+            <td>54.7%</td>
+            <td>0.244</td>
+            <td>58.3%*</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="figure-box">
+        <img src="assets/results_composite.png" alt="Results Composite">
+        <div class="caption">Figure 2: Permutation Feature Importance (Top Features) & Simulated Out-of-Sample Walk-Forward Equity Curve</div>
+      </div>
+
+      <h3>Conclusion & Deployment</h3>
+      <ul>
+        <li><strong>Consistent Predictive Alpha:</strong> LightGBM achieves 58.3% accuracy on clear directional signals, generating +44.1% simulated net return across 10,493 test candles.</li>
+        <li><strong>Reliable Uncertainty:</strong> Platt calibration prevents probability overconfidence under market regime shifts (Log-Loss: 0.680 vs baseline 0.693).</li>
+        <li><strong>Production Service:</strong> Deployed live on Render with active Binance WebSocket feed, live audit log, and sub-10ms inference latency.</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Footer References -->
+  <footer>
+    <strong>References:</strong>
+    <div class="ref-list">
+      <div>[1] M. López de Prado, <em>Advances in Financial Machine Learning</em>, John Wiley & Sons, 2018.</div>
+      <div>[2] D. R. Aronson, <em>Evidence-Based Technical Analysis: Applying the Scientific Method and Statistical Inference to Trading Signals</em>, John Wiley & Sons, 2006.</div>
+      <div>[3] G. Ke et al., "LightGBM: A highly efficient gradient boosting decision tree," in <em>Advances in Neural Information Processing Systems (NeurIPS)</em>, vol. 30, pp. 3146–3154, 2017.</div>
+    </div>
+  </footer>
+</div>
+
+</body>
+</html>
