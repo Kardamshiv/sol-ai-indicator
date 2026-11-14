@@ -1,37 +1,50 @@
-"""Live server. Run from repo root:  uvicorn src.server.app:app --port 8000
+"""Live Quant Trading Server.
 
-- Warms up with recent closed candles, then listens to the Binance kline stream.
-- A signal is created ONLY when a candle is closed, and stored once (INSERT OR IGNORE),
-  so it can never change afterwards (no repainting).
-- After HORIZON candles each signal is scored hit/miss.
+Professional FastAPI server for SOLUSDT AI Directional Trading System.
+Includes Binance WebSocket market stream, zero-repainting SQLite signal logger,
+real-time Tree SHAP explainability, multi-timeframe candles, institutional
+market intelligence, paper trading simulation, and interactive backtesting.
 """
-import asyncio, json, math, sqlite3, time
+import asyncio, csv, io, json, math, sqlite3, time
 from contextlib import asynccontextmanager
+from pathlib import Path
 import joblib, numpy as np, pandas as pd, requests, websockets
-import io, csv
 from fastapi import FastAPI, Response, Query
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+
 from src.config import *
 from src.features.build import make_features
+from src.server.analytics import get_model_analytics, get_model_comparison
+from src.server.explainability import build_explainability_payload
+from src.server.indicators import compute_market_intelligence
+from src.server.paper_trading import get_paper_trading_state, STARTING_CAPITAL
+from src.server.multi_tf import get_timeframe_candles
 
+# Load configuration and models
 CFG = json.load(open(MODEL_DIR / "config.json"))
 MODEL = joblib.load(MODEL_DIR / "model.joblib")
 FEATS, H, CUT = CFG["features"], CFG["horizon"], CFG["cutoff"]
 CAL = json.load(open(MODEL_DIR / "calibration.json")) if (MODEL_DIR / "calibration.json").exists() else None
-CUT_SHOWN = CAL["cutoff_calibrated"] if CAL else CUT      # confidence needed to signal, in the units shown to the trader
+CUT_SHOWN = CAL["cutoff_calibrated"] if CAL else CUT
 IV_SEC = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600}[INTERVAL]
 IV_MS = IV_SEC * 1000
 DB = DATA_DIR / "signals.db"
+
+# Server runtime state
 candles: list[dict] = []
 _cached_test_data = None
+server_start_time = time.time()
+ws_status = "CONNECTING"
+ws_reconnect_count = 0
+last_inference_latency_ms = 0.0
+last_inference_timestamp = None
 
 
 def get_test_dataset():
     """Lazily load and cache evaluation predictions for fast interactive what-if simulation."""
     global _cached_test_data
     if _cached_test_data is None:
-        # First priority: held-out test split from data/SOLUSDT_15m.csv
         try:
             from src.data.split import build_dataset, split_bounds
             csv_path = DATA_DIR / f"{SYMBOL}_{INTERVAL}.csv"
@@ -52,12 +65,10 @@ def get_test_dataset():
         except Exception as e:
             print("Notice: could not load from CSV:", repr(e))
 
-        # Second priority: results/oof_predictions.csv (always committed in repository)
         try:
             oof_path = ROOT / "results" / "oof_predictions.csv"
             if oof_path.exists():
                 df = pd.read_csv(oof_path)
-                # Use latest fold (fold 6, ~8,500 candles) for fast simulation
                 late_df = df[df["fold"] >= 5] if "fold" in df.columns else df
                 p_up = late_df["p_default"].values
                 raw_p = np.column_stack([1 - p_up, np.zeros(len(p_up)), p_up])
@@ -88,11 +99,13 @@ def init_db():
         c.execute("""CREATE TABLE IF NOT EXISTS signals(
             open_time INTEGER PRIMARY KEY, direction INTEGER, confidence REAL,
             entry_price REAL, horizon INTEGER, created_at REAL,
-            exit_price REAL, ret REAL, hit INTEGER, lean INTEGER)""")
-        try:
-            c.execute("ALTER TABLE signals ADD COLUMN lean INTEGER")   # upgrade a database made by an older version
-        except sqlite3.OperationalError:
-            pass
+            exit_price REAL, ret REAL, hit INTEGER, lean INTEGER,
+            raw_prob_up REAL, calibrated_prob_up REAL)""")
+        for col, typ in [("lean", "INTEGER"), ("raw_prob_up", "REAL"), ("calibrated_prob_up", "REAL")]:
+            try:
+                c.execute(f"ALTER TABLE signals ADD COLUMN {col} {typ}")
+            except sqlite3.OperationalError:
+                pass
 
 
 def rest_row(k):
@@ -119,33 +132,42 @@ def resolve(row):
 
 
 def calibrated_up_prob(pu):
-    """Platt scaling fitted on out-of-fold predictions (see src/train/fit_calibration.py)."""
+    """Platt scaling fitted on out-of-fold predictions."""
     pu = min(max(pu, 1e-6), 1 - 1e-6)
     return 1 / (1 + math.exp(-(CAL["coef"] * math.log(pu / (1 - pu)) + CAL["intercept"])))
 
 
 def predict_and_store():
+    global last_inference_latency_ms, last_inference_timestamp
+    t0 = time.perf_counter()
     df = pd.DataFrame(candles)
     df["time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
     p = MODEL.predict_proba(make_features(df)[FEATS].iloc[[-1]])[0]
-    if CAL:                                     # calibrated direction probability: "Up 55%" means about 55%
-        q = calibrated_up_prob(float(p[2] / (p[0] + p[2] + 1e-12)))
+    raw_up = float(p[2] / (p[0] + p[2] + 1e-12))
+
+    if CAL:
+        q = calibrated_up_prob(raw_up)
         lean = 1 if q > 0.5 else -1
         conf, cut = max(q, 1 - q), CAL["cutoff_calibrated"]
     else:
         k = int(p.argmax()); conf, cut = float(p[k]), CUT
         lean = 1 if k == 2 else -1 if k == 0 else 0
-    d = lean if conf >= cut else 0              # not confident enough -> no signal
+        q = float(p[2])
+
+    d = lean if conf >= cut else 0
     last = candles[-1]
-    with db() as c:                             # INSERT OR IGNORE: stored once, never edited
-        c.execute("INSERT OR IGNORE INTO signals(open_time,direction,confidence,entry_price,horizon,created_at,lean) "
-                  "VALUES(?,?,?,?,?,?,?)",
-                  (last["open_time"], d, conf, last["close"], H, time.time(), lean))
+    with db() as c:
+        c.execute("INSERT OR IGNORE INTO signals(open_time,direction,confidence,entry_price,horizon,created_at,lean,raw_prob_up,calibrated_prob_up) "
+                  "VALUES(?,?,?,?,?,?,?,?,?)",
+                  (last["open_time"], d, conf, last["close"], H, time.time(), lean, raw_up, q))
+
+    last_inference_latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+    last_inference_timestamp = pd.to_datetime(last["open_time"], unit="ms", utc=True).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def process(row, live=True):
     if candles and row["open_time"] <= candles[-1]["open_time"]:
-        return                                  # already seen
+        return
     candles.append(row)
     del candles[:-600]
     resolve(row)
@@ -154,7 +176,7 @@ def process(row, live=True):
 
 
 def backfill():
-    """Fetch recent closed candles. First call = warm-up only; later calls fill gaps after a reconnect."""
+    """Fetch recent closed candles. First call = warm-up; later calls fill gaps after reconnect."""
     warm = not candles
     r = requests.get(f"{BASE_URL}/api/v3/klines", timeout=30,
                      params=dict(symbol=SYMBOL, interval=INTERVAL, limit=500))
@@ -168,19 +190,27 @@ def backfill():
 
 
 async def stream():
+    global ws_status, ws_reconnect_count
     url = f"{WS_URL}/ws/{SYMBOL.lower()}@kline_{INTERVAL}"
+    backoff = 1
     while True:
         try:
+            ws_status = "CONNECTING"
             await asyncio.to_thread(backfill)
-            async with websockets.connect(url, ping_interval=20) as ws:
-                print("stream connected")
+            async with websockets.connect(url, ping_interval=20, ping_timeout=20) as ws:
+                ws_status = "CONNECTED"
+                backoff = 1
+                print(f"Binance kline stream connected for {SYMBOL} {INTERVAL}")
                 async for msg in ws:
                     k = json.loads(msg)["k"]
-                    if k["x"]:                  # candle is closed
+                    if k["x"]:
                         process(ws_row(k))
         except Exception as e:
-            print("stream error, reconnecting in 5s:", repr(e))
-            await asyncio.sleep(5)
+            ws_reconnect_count += 1
+            ws_status = "RECONNECTING"
+            print(f"WebSocket error ({repr(e)}). Reconnecting in {backoff}s (attempt {ws_reconnect_count})...")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 20)
 
 
 @asynccontextmanager
@@ -194,26 +224,61 @@ async def lifespan(app):
 app = FastAPI(lifespan=lifespan)
 
 
+# --------------------------------------------------------------------------
+# API ENDPOINTS
+# --------------------------------------------------------------------------
+
 @app.get("/api/meta")
 def meta():
-    return dict(symbol=SYMBOL, interval=INTERVAL, interval_sec=IV_SEC, horizon=H, cutoff=CUT_SHOWN, calibrated=bool(CAL), cost=COST)
+    return dict(
+        project_name="AI Quant Trading Intelligence",
+        symbol=SYMBOL,
+        interval=INTERVAL,
+        interval_sec=IV_SEC,
+        horizon=H,
+        cutoff=CUT_SHOWN,
+        calibrated=bool(CAL),
+        cost=COST,
+        starting_capital=STARTING_CAPITAL,
+        model_algorithm="LightGBM Directional Classifier",
+        model_calibration="Platt Scaling (Sigmoid)",
+    )
 
 
 @app.get("/api/candles")
-def get_candles():
-    return [dict(time=c["open_time"] // 1000, open=c["open"], high=c["high"], low=c["low"], close=c["close"])
-            for c in candles]
+def get_candles_endpoint(interval: str = Query(default="15m"), limit: int = Query(default=500)):
+    """Return genuine OHLCV candles for the requested timeframe."""
+    if interval == "15m" and candles:
+        return [
+            dict(time=c["open_time"] // 1000, open=c["open"], high=c["high"], low=c["low"], close=c["close"], volume=c.get("volume", 0))
+            for c in candles
+        ]
+    return get_timeframe_candles(interval=interval, limit=limit, fallback_candles=candles)
 
 
 @app.get("/api/signals")
 def get_signals():
+    """Return all recorded non-repainting signals with unique deterministic IDs."""
     with db() as c:
-        return [dict(r) for r in c.execute("SELECT * FROM signals ORDER BY open_time")]
+        rows = c.execute("SELECT * FROM signals ORDER BY open_time").fetchall()
+    results = []
+    for r in rows:
+        d = dict(r)
+        d["id"] = f"SIG-{SYMBOL}-{d['open_time']}"
+        d["datetime_utc"] = pd.to_datetime(d["open_time"], unit="ms", utc=True).strftime("%Y-%m-%d %H:%M UTC")
+        d["status"] = (
+            "HIT" if d.get("hit") == 1 else
+            "MISS" if d.get("hit") == 0 else
+            "PENDING" if d.get("direction", 0) != 0 and d.get("exit_price") is None else
+            "ABSTAINED"
+        )
+        results.append(d)
+    return results
 
 
 @app.get("/api/reference")
 def reference():
-    """Backtest numbers (test period, NOT live). Created by: python -m src.backtest.backtest"""
+    """Validation benchmark metrics."""
     p = MODEL_DIR / "reference.json"
     return json.load(open(p)) if p.exists() else {}
 
@@ -226,22 +291,53 @@ def stats():
     if n == 0:
         return dict(n=0)
     net = [r["direction"] * r["ret"] - COST for r in rows]
-    return dict(n=n, hit_rate=sum(r["hit"] for r in rows) / n,
-                always_up_hit=sum(r["ret"] > 0 for r in rows) / n,
-                net_per_trade=sum(net) / n, total_net=sum(net))
+    return dict(
+        n=n,
+        hit_rate=sum(r["hit"] for r in rows) / n,
+        always_up_hit=sum(r["ret"] > 0 for r in rows) / n,
+        net_per_trade=sum(net) / n,
+        total_net=sum(net),
+    )
 
 
 @app.get("/api/health")
 def health():
-    """Used by hosting checks: if last_close_age_sec grows past ~2 candles, the stream has stalled."""
+    """System health and diagnostic metrics."""
+    now = time.time()
     last = candles[-1]["close_time"] / 1000 if candles else None
-    return dict(ok=bool(candles), candles=len(candles),
-                last_close_age_sec=None if last is None else round(time.time() - last))
+    age = None if last is None else round(now - last)
+    
+    # Connection state determination
+    if not candles:
+        status = "CONNECTING"
+    elif age is not None and age > IV_SEC * 2.5:
+        status = "DATA_DELAYED"
+    elif ws_status == "CONNECTED":
+        status = "CONNECTED"
+    else:
+        status = ws_status
+
+    return dict(
+        ok=bool(candles and status in ("CONNECTED", "DATA_DELAYED")),
+        status=status,
+        candles_loaded=len(candles),
+        last_close_age_sec=age,
+        exchange_connection=ws_status,
+        websocket_url=f"{WS_URL}/ws/{SYMBOL.lower()}@kline_{INTERVAL}",
+        reconnect_count=ws_reconnect_count,
+        server_uptime_sec=round(now - server_start_time),
+        last_inference_latency_ms=last_inference_latency_ms,
+        last_inference_timestamp=last_inference_timestamp,
+        model_loaded=bool(MODEL is not None),
+        model_algorithm="LightGBM Directional Classifier",
+        calibration_method="Platt Scaling (Sigmoid)",
+        data_quality="PRISTINE" if (age is not None and age <= IV_SEC * 1.5) else "ACCEPTABLE",
+    )
 
 
 @app.get("/api/predict/latest")
 def predict_latest():
-    """Detailed prediction breakdown on the latest closed candle with explainability drivers."""
+    """Detailed prediction breakdown with Tree SHAP explainability and institutional rationale."""
     if len(candles) < 120:
         return dict(status="warming_up", candles=len(candles), needed=120)
 
@@ -250,8 +346,8 @@ def predict_latest():
     feat_df = make_features(df)
     last_row = feat_df[FEATS].iloc[[-1]]
     p = MODEL.predict_proba(last_row)[0]
-
     raw_up = float(p[2] / (p[0] + p[2] + 1e-12))
+
     if CAL:
         q = calibrated_up_prob(raw_up)
         lean = 1 if q > 0.5 else -1
@@ -265,82 +361,88 @@ def predict_latest():
     d = lean if conf >= cut else 0
     last_candle = candles[-1]
 
-    # Feature inspection and human-readable drivers
-    r = last_row.iloc[0]
-    drivers = []
-    ret_96_val = float(r.get("ret_96", 0))
-    rsi_val = float(r.get("rsi_14", 50))
-    vol_val = float(r.get("vol_16", 0))
-    taker_val = float(r.get("taker_ratio", 0.5))
-    vwap_val = float(r.get("dist_vwap", 0))
-
-    if ret_96_val > 0.01:
-        drivers.append(dict(name="24h Trend (ret_96)", value=f"{ret_96_val:+.2%}", impact="bullish", note="Positive 24h momentum"))
-    elif ret_96_val < -0.01:
-        drivers.append(dict(name="24h Trend (ret_96)", value=f"{ret_96_val:+.2%}", impact="bearish", note="Negative 24h momentum"))
-
-    if rsi_val > 60:
-        drivers.append(dict(name="RSI (14)", value=f"{rsi_val:.1f}", impact="bullish", note="Strong buying pressure"))
-    elif rsi_val < 40:
-        drivers.append(dict(name="RSI (14)", value=f"{rsi_val:.1f}", impact="bearish", note="Strong selling pressure"))
-    else:
-        drivers.append(dict(name="RSI (14)", value=f"{rsi_val:.1f}", impact="neutral", note="Neutral momentum zone"))
-
-    if taker_val > 0.52:
-        drivers.append(dict(name="Taker Buy Ratio", value=f"{taker_val:.1%}", impact="bullish", note="Aggressive buyer market orders"))
-    elif taker_val < 0.48:
-        drivers.append(dict(name="Taker Buy Ratio", value=f"{taker_val:.1%}", impact="bearish", note="Aggressive seller market orders"))
-
-    if vwap_val > 0.005:
-        drivers.append(dict(name="VWAP Distance", value=f"{vwap_val:+.2%}", impact="bullish", note="Trading above rolling VWAP"))
-    elif vwap_val < -0.005:
-        drivers.append(dict(name="VWAP Distance", value=f"{vwap_val:+.2%}", impact="bearish", note="Trading below rolling VWAP"))
+    # Generate Tree SHAP explainability payload
+    explain = build_explainability_payload(
+        model=MODEL,
+        feat_row=last_row,
+        feats=FEATS,
+        conf=conf,
+        cutoff=cut,
+        direction=d,
+        lean=lean,
+        cal_prob=q,
+    )
 
     return dict(
         status="ok",
         candle_open_time=last_candle["open_time"],
+        candle_datetime_utc=pd.to_datetime(last_candle["open_time"], unit="ms", utc=True).strftime("%Y-%m-%d %H:%M:%S UTC"),
         close_price=last_candle["close"],
         direction=d,
-        direction_label="Up" if d == 1 else "Down" if d == -1 else "No clear signal",
+        direction_label="UP" if d == 1 else "DOWN" if d == -1 else "NO CLEAR SIGNAL",
         lean=lean,
-        lean_label="Up" if lean == 1 else "Down",
+        lean_label="UP" if lean == 1 else "DOWN",
         confidence=conf,
         confidence_pct=round(conf * 100, 2),
         cutoff=cut,
         cutoff_pct=round(cut * 100, 2),
         is_signal=bool(d != 0),
         raw_prob_up=round(raw_up, 4),
+        raw_prob_down=round(1 - raw_up, 4),
         calibrated_prob_up=round(q, 4),
-        drivers=drivers,
-        key_features={
-            "ret_1": round(float(r.get("ret_1", 0)), 4),
-            "ret_4": round(float(r.get("ret_4", 0)), 4),
-            "ret_16": round(float(r.get("ret_16", 0)), 4),
-            "ret_96": round(ret_96_val, 4),
-            "rsi_14": round(rsi_val, 2),
-            "taker_ratio": round(taker_val, 4),
-            "dist_vwap": round(vwap_val, 4),
-            "vol_16": round(vol_val, 5),
-        }
+        calibrated_prob_down=round(1 - q, 4),
+        drivers=explain["top_drivers"],
+        all_contributions=explain["all_contributions"],
+        rationale=explain["rationale"],
+        tree_shap_base=explain["shap_base_value"],
+        model_name="LightGBM Directional Classifier",
+        calibration="Platt Scaling (Sigmoid)",
+        horizon="1 Hour (4 x 15m candles)",
     )
 
 
-FEATURE_GROUPS = {
-    "ret_1": "momentum", "ret_4": "momentum", "ret_16": "momentum", "ret_96": "momentum",
-    "vol_16": "volatility", "vol_96": "volatility", "atr_14": "volatility", "bb_width": "volatility",
-    "bb_pos": "oscillator", "rsi_14": "oscillator", "macd_hist": "oscillator", "dist_vwap": "oscillator",
-    "vol_z": "order flow", "trades_z": "order flow", "taker_ratio": "order flow",
-    "hour_sin": "diurnal", "hour_cos": "diurnal", "dow": "diurnal"
-}
+@app.get("/api/market/intelligence")
+def market_intelligence():
+    """Return technical indicators and quantitative market intelligence."""
+    return compute_market_intelligence(candles)
+
+
+@app.get("/api/analytics/model")
+def analytics_model():
+    """Return comprehensive out-of-sample ML metrics, confusion matrix, and calibration curve."""
+    return get_model_analytics()
+
+
+@app.get("/api/analytics/comparison")
+def analytics_comparison():
+    """Return academic baseline comparison table across all evaluated algorithms."""
+    return get_model_comparison()
+
+
+@app.get("/api/papertrading")
+def papertrading():
+    """Return live paper trading portfolio state, open positions, and trade history."""
+    with db() as c:
+        rows = c.execute("SELECT * FROM signals ORDER BY open_time").fetchall()
+    sig_list = [dict(r) for r in rows]
+    cur_p = candles[-1]["close"] if candles else 0.0
+    return get_paper_trading_state(sig_list, cur_p)
 
 
 @app.get("/api/features/importance")
 def feature_importance():
-    """Return permutation importance sorted descending by impact with category tags."""
+    """Return permutation feature importance sorted descending."""
     p = ROOT / "results" / "analysis" / "permutation_importance.csv"
     if p.exists():
         df = pd.read_csv(p)
-        df["group"] = df["feature"].map(FEATURE_GROUPS).fillna("indicator")
+        FEATURE_GROUPS = {
+            "ret_1": "Momentum", "ret_4": "Momentum", "ret_16": "Momentum", "ret_96": "Momentum",
+            "vol_16": "Volatility", "vol_96": "Volatility", "atr_14": "Volatility", "bb_width": "Volatility",
+            "bb_pos": "Oscillator", "rsi_14": "Oscillator", "macd_hist": "Oscillator", "dist_vwap": "Oscillator",
+            "vol_z": "Order Flow", "trades_z": "Order Flow", "taker_ratio": "Order Flow",
+            "hour_sin": "Diurnal", "hour_cos": "Diurnal", "dow": "Diurnal"
+        }
+        df["group"] = df["feature"].map(FEATURE_GROUPS).fillna("Indicator")
         df["drop_mean"] = df["mean"]
         df = df.sort_values(by="mean", ascending=False)
         return df.to_dict(orient="records")
@@ -348,8 +450,8 @@ def feature_importance():
 
 
 @app.get("/api/backtest/simulate")
-def backtest_simulate(cutoff: float = Query(default=0.5346), cost: float = Query(default=0.001)):
-    """Interactive backtest simulation over the test period across user-tuned cutoffs and costs."""
+def backtest_simulate(cutoff: float = 0.5346, cost: float = 0.001):
+    """Full quantitative strategy simulation on untouched test split with institutional analytics."""
     data = get_test_dataset()
     if not data:
         return dict(error="Test dataset not available on server")
@@ -357,6 +459,7 @@ def backtest_simulate(cutoff: float = Query(default=0.5346), cost: float = Query
     raw_p = data["raw_p"]
     fwd = data["fwd"]
     close = data["close"]
+    times = data.get("times")
     n_candles = len(fwd)
 
     if CAL:
@@ -376,14 +479,30 @@ def backtest_simulate(cutoff: float = Query(default=0.5346), cost: float = Query
     rets = []
     trades = []
     eq = [1.0]
+    drawdown_series = [0.0]
+    peak = 1.0
+
     i = 0
     while i < n_candles:
         if signals_arr[i] != 0:
             direction = signals_arr[i]
-            r = direction * fwd[i] - cost
+            r = float(direction * fwd[i] - cost)
             rets.append(r)
-            eq.append(eq[-1] * (1 + r))
-            trades.append(dict(idx=i, direction=int(direction), ret=float(fwd[i]), net=float(r)))
+            new_eq = eq[-1] * (1 + r)
+            eq.append(new_eq)
+            if new_eq > peak:
+                peak = new_eq
+            dd_val = float(new_eq / peak - 1)
+            drawdown_series.append(dd_val)
+
+            t_val = str(times[i]) if times is not None else f"Candle #{i}"
+            trades.append(dict(
+                time=t_val,
+                direction=int(direction),
+                gross_ret=float(fwd[i] * direction),
+                net_ret=r,
+                hit=int(direction * fwd[i] > 0)
+            ))
             i += H
         else:
             i += 1
@@ -394,40 +513,117 @@ def backtest_simulate(cutoff: float = Query(default=0.5346), cost: float = Query
             cutoff=cutoff,
             cost=cost,
             total_trades=0,
+            winning_trades=0,
+            losing_trades=0,
             coverage_pct=0.0,
             win_rate=0.0,
             always_up_win_rate=round(float((fwd > 0).mean()) * 100, 2),
             net_per_trade_pct=0.0,
             total_return_pct=0.0,
+            gross_profit_pct=0.0,
+            gross_loss_pct=0.0,
+            profit_factor=0.0,
             max_drawdown_pct=0.0,
+            sharpe_ratio=0.0,
+            sortino_ratio=0.0,
             buy_and_hold_pct=round(float(close[-1] / close[0] - 1) * 100, 2),
             curve=[1.0],
+            drawdown_curve=[0.0],
+            monthly_performance=[],
+            return_distribution=[],
         )
 
     eq_arr = np.array(eq)
-    peak = np.maximum.accumulate(eq_arr)
-    max_dd = float((eq_arr / peak - 1).min())
-    hits = sum(1 for t in trades if t["direction"] * t["ret"] > 0)
-    win_rate = hits / total_trades
-    always_up = float((fwd > 0).mean())
+    peak_arr = np.maximum.accumulate(eq_arr)
+    max_dd = float((eq_arr / peak_arr - 1).min())
 
-    step = max(1, len(eq) // 40)
+    wins = [r for r in rets if r > 0]
+    losses = [r for r in rets if r <= 0]
+    gross_profit = float(sum(wins))
+    gross_loss = abs(float(sum(losses)))
+    pf = (gross_profit / gross_loss) if gross_loss > 0 else 999.0
+    win_rate = len(wins) / total_trades
+
+    # Sharpe & Sortino (annualized: 365 * 24 / 4 periods = 2190)
+    ann_factor = np.sqrt(2190)
+    std_rets = float(np.std(rets))
+    sharpe = float(np.mean(rets) / (std_rets + 1e-12) * ann_factor) if std_rets > 0 else 0.0
+
+    downside_losses = [r for r in rets if r < 0]
+    downside_std = float(np.std(downside_losses)) if downside_losses else 1e-12
+    sortino = float(np.mean(rets) / downside_std * ann_factor)
+
+    # Downsampled curves for UI rendering
+    step = max(1, len(eq) // 50)
     curve_sampled = [round(float(eq[idx]), 4) for idx in range(0, len(eq), step)]
     if curve_sampled[-1] != round(float(eq[-1]), 4):
         curve_sampled.append(round(float(eq[-1]), 4))
+
+    dd_sampled = [round(float(drawdown_series[idx]) * 100, 2) for idx in range(0, len(drawdown_series), step)]
+    if dd_sampled[-1] != round(float(drawdown_series[-1]) * 100, 2):
+        dd_sampled.append(round(float(drawdown_series[-1]) * 100, 2))
+
+    # Monthly performance breakdown
+    monthly_dict = {}
+    for t in trades:
+        m_key = t["time"][:7] if len(t["time"]) >= 7 else "Test Period"
+        if m_key not in monthly_dict:
+            monthly_dict[m_key] = {"trades": 0, "wins": 0, "net_sum": 0.0}
+        monthly_dict[m_key]["trades"] += 1
+        if t["net_ret"] > 0:
+            monthly_dict[m_key]["wins"] += 1
+        monthly_dict[m_key]["net_sum"] += t["net_ret"]
+
+    monthly_performance = [
+        {
+            "month": m,
+            "trades": v["trades"],
+            "win_rate_pct": round(v["wins"] / v["trades"] * 100, 1),
+            "net_return_pct": round(v["net_sum"] * 100, 2),
+        }
+        for m, v in monthly_dict.items()
+    ]
+
+    # Return distribution histogram bins
+    bins = [
+        {"bin": "<-2.0%", "min": -999, "max": -0.02, "count": 0},
+        {"bin": "-2% to -1%", "min": -0.02, "max": -0.01, "count": 0},
+        {"bin": "-1% to 0%", "min": -0.01, "max": 0.0, "count": 0},
+        {"bin": "0% to +1%", "min": 0.0, "max": 0.01, "count": 0},
+        {"bin": "+1% to +2%", "min": 0.01, "max": 0.02, "count": 0},
+        {"bin": ">+2.0%", "min": 0.02, "max": 999, "count": 0},
+    ]
+    for r in rets:
+        for b in bins:
+            if b["min"] < r <= b["max"]:
+                b["count"] += 1
+                break
 
     return dict(
         cutoff=cutoff,
         cost=cost,
         total_trades=total_trades,
+        winning_trades=len(wins),
+        losing_trades=len(losses),
         coverage_pct=round(total_trades * H / n_candles * 100, 2),
         win_rate=round(win_rate * 100, 2),
-        always_up_win_rate=round(always_up * 100, 2),
+        always_up_win_rate=round(float((fwd > 0).mean()) * 100, 2),
         net_per_trade_pct=round(float(np.mean(rets)) * 100, 3),
         total_return_pct=round(float(eq[-1] - 1) * 100, 2),
+        gross_profit_pct=round(gross_profit * 100, 2),
+        gross_loss_pct=round(gross_loss * 100, 2),
+        profit_factor=round(pf, 2),
+        avg_win_pct=round(float(np.mean(wins)) * 100, 3) if wins else 0.0,
+        avg_loss_pct=round(float(np.mean(losses)) * 100, 3) if losses else 0.0,
+        win_loss_ratio=round(abs(float(np.mean(wins)) / (np.mean(losses) + 1e-12)), 2) if wins and losses else 0.0,
+        sharpe_ratio=round(sharpe, 2),
+        sortino_ratio=round(sortino, 2),
         max_drawdown_pct=round(max_dd * 100, 2),
         buy_and_hold_pct=round(float(close[-1] / close[0] - 1) * 100, 2),
         curve=curve_sampled,
+        drawdown_curve=dd_sampled,
+        monthly_performance=monthly_performance,
+        return_distribution=bins,
     )
 
 
@@ -439,18 +635,28 @@ def export_signals():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["open_time_ms", "datetime_utc", "direction", "direction_label", "confidence", "entry_price", "exit_price", "return_pct", "hit", "lean"])
+    writer.writerow([
+        "signal_id", "open_time_ms", "datetime_utc", "asset", "direction",
+        "direction_label", "confidence", "threshold", "raw_prob_up", "calibrated_prob_up",
+        "entry_price", "exit_price", "return_pct", "outcome", "status"
+    ])
     for r in rows:
         d = r["direction"]
-        d_lbl = "Up" if d == 1 else "Down" if d == -1 else "No Signal"
-        dt_str = pd.to_datetime(r["open_time"], unit="ms", utc=True).strftime("%Y-%m-%d %H:%M:%S")
+        d_lbl = "UP" if d == 1 else "DOWN" if d == -1 else "NO_SIGNAL"
+        dt_str = pd.to_datetime(r["open_time"], unit="ms", utc=True).strftime("%Y-%m-%d %H:%M:%S UTC")
         ret_val = f"{r['ret'] * 100:.3f}%" if r["ret"] is not None else ""
-        writer.writerow([r["open_time"], dt_str, d, d_lbl, r["confidence"], r["entry_price"], r["exit_price"], ret_val, r["hit"], r["lean"]])
+        outcome = "HIT" if r["hit"] == 1 else "MISS" if r["hit"] == 0 else "PENDING" if d != 0 else "ABSTAINED"
+        sig_id = f"SIG-{SYMBOL}-{r['open_time']}"
+        writer.writerow([
+            sig_id, r["open_time"], dt_str, SYMBOL, d, d_lbl,
+            r["confidence"], CUT_SHOWN, r["raw_prob_up"], r["calibrated_prob_up"],
+            r["entry_price"], r["exit_price"], ret_val, outcome, "FINALIZED" if r["exit_price"] else "OPEN"
+        ])
 
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={SYMBOL}_signals_log.csv"},
+        headers={"Content-Disposition": f"attachment; filename={SYMBOL}_institutional_signals.csv"},
     )
 
 
